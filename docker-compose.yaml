@@ -1,0 +1,80 @@
+services:
+  enterprise-architect:
+    image: evbodanov/enterprise-architect-wine:v1
+    container_name: enterprise-architect
+    shm_size: "1gb"
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - enterprise-architect-wine:/home/ea/.wine
+      - ./enterprise-architect/models:/models
+    environment:
+      SCREEN_RESOLUTION: "1600x900x24"
+
+  sysml-kernel:
+    image: csba184/sysml.jupyter:latest
+    container_name: sysml-kernel-container
+    tty: true
+    stdin_open: true
+    entrypoint: []
+    command: >
+      conda run --no-capture-output -n sysml
+      jupyter kernel --kernel=sysml --ip=0.0.0.0
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      SYSML_API_SERVER: "http://sysmlapiserver:9000"
+    volumes:
+      - ./digital-twin-profile-sysml-v2/apiserver/process_sysml.py:/home/sysml/process_sysml.py:ro
+
+  digital-twin-profile-sysml-v1:
+    image: evbodanov/digital-twin-profile-sysml-v1:v1
+    container_name: digital-twin-profile-sysml-v1
+    environment:
+      DTP_PATH_MAP: "${DTP_PATH_MAP:-}"
+    volumes:
+      - ./pipeline/digital-twin-profile-sysml-v1/input:/pipeline/input
+      - ./pipeline/digital-twin-profile-sysml-v1/output:/pipeline/output
+      - type: bind
+        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        target: /pipeline/code
+        read_only: true
+
+  digital-twin-profile-sysml-v2:
+    image: evbodanov/digital-twin-profile-sysml-v2:v1
+    container_name: digital-twin-profile-sysml-v2
+    depends_on:
+      - sysml-kernel
+    environment:
+      SYSML_KERNEL_CONTAINER: "sysml-kernel-container"
+      DTP_PATH_MAP: "${DTP_PATH_MAP:-}"
+    volumes:
+      - ./pipeline/digital-twin-profile-sysml-v2/input:/pipeline/input
+      - ./pipeline/digital-twin-profile-sysml-v2/output:/pipeline/output
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        target: /pipeline/code
+        read_only: true
+
+  digital-twin-manager:
+    image: evbodanov/digital-twin-manager:v1
+    container_name: digital-twin-manager
+    stdin_open: true
+    tty: true
+    environment:
+      DIGITAL_TWIN_MANAGER_CONFIG_DIR: "/pipeline/input"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-}"
+    volumes:
+      - ./pipeline/digital-twin-manager/input:/pipeline/input
+      - ./pipeline/digital-twin-manager/output:/pipeline/output
+      - type: bind
+        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        target: /pipeline/code
+        read_only: true
+
+volumes:
+  enterprise-architect-wine:

@@ -1,0 +1,15 @@
+*
+
+!.gitignore
+!README.md
+!docker-compose.yaml
+!orchestrate_pipeline.py
+
+!scripts/
+!scripts/**
+
+!enterprise-architect/
+!enterprise-architect/models/
+!enterprise-architect/models/**
+
+**/__pycache__/
