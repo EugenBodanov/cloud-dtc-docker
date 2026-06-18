@@ -36,7 +36,7 @@ services:
       - ./pipeline/digital-twin-profile-sysml-v1/input:/pipeline/input
       - ./pipeline/digital-twin-profile-sysml-v1/output:/pipeline/output
       - type: bind
-        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        source: ${PIPELINE_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
         read_only: true
 
@@ -53,7 +53,7 @@ services:
       - ./pipeline/digital-twin-profile-sysml-v2/output:/pipeline/output
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind
-        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        source: ${PIPELINE_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
         read_only: true
 
@@ -72,7 +72,7 @@ services:
       - ./pipeline/digital-twin-manager/input:/pipeline/input
       - ./pipeline/digital-twin-manager/output:/pipeline/output
       - type: bind
-        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        source: ${PIPELINE_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
         read_only: true
 

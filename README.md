@@ -43,7 +43,6 @@ Demo command:
 
 ```powershell
 python -m orchestrate_pipeline `
-  --build-images `
   --converter sysml-v1 `
   --ea-export enterprise-architect/models `
   --show-configs `
@@ -71,6 +70,12 @@ So the demo maps the old path to:
 /pipeline/code/microgrid/stopCharging
 ```
 
+For this to work, the repository must include the demo Lambda folder:
+
+```text
+demo-code/microgrid/stopCharging
+```
+
 ## Demo: SysML v2
 
 SysML v2 reads `.sysml` files from:
@@ -83,7 +88,6 @@ Demo command:
 
 ```powershell
 python -m orchestrate_pipeline `
-  --build-images `
   --converter sysml-v2 `
   --ea-export enterprise-architect/models `
   --show-configs `

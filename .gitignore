@@ -12,4 +12,7 @@
 !enterprise-architect/models/
 !enterprise-architect/models/**
 
+!demo-code/
+!demo-code/**
+
 **/__pycache__/
