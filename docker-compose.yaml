@@ -24,8 +24,6 @@ services:
       - "127.0.0.1:8888:8888"
     environment:
       SYSML_API_SERVER: "http://sysmlapiserver:9000"
-    volumes:
-      - ./digital-twin-profile-sysml-v2/apiserver/process_sysml.py:/home/sysml/process_sysml.py:ro
 
   digital-twin-profile-sysml-v1:
     image: evbodanov/digital-twin-profile-sysml-v1:v1
