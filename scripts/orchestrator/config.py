@@ -24,6 +24,7 @@ class WatchConfig:
 @dataclass(frozen=True)
 class PipelineConfig:
     compose_file: Path
+    compose_profiles: tuple[str, ...]
     digital_twin_name: str
     generated_twin_dir: str | None
     aws_credentials_file: Path | None
@@ -57,6 +58,7 @@ def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineCon
     watch_raw = _object(raw.get("watch", {}), "watch")
     return PipelineConfig(
         compose_file=_path(raw, "compose_file", "docker-compose.yaml"),
+        compose_profiles=_string_tuple(raw, "compose_profiles"),
         digital_twin_name=_string(raw, "digital_twin_name", "dtwin"),
         generated_twin_dir=_optional_string(raw, "generated_twin_dir"),
         aws_credentials_file=_optional_path(raw, "aws_credentials_file"),
@@ -81,6 +83,7 @@ def run_config_snapshot(config: PipelineConfig, *, source: Path, converter: str)
         "source": relative_to_repo(source),
         "converter": converter_label(converter),
         "compose_file": relative_to_repo(resolve_repo_path(config.compose_file)),
+        "compose_profiles": list(config.compose_profiles),
         "digital_twin_name": config.digital_twin_name,
         "generated_twin_dir": config.generated_twin_dir,
         "aws_credentials_file": _display_optional_path(config.aws_credentials_file),

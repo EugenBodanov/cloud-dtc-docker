@@ -27,6 +27,7 @@ def run_app(options: LaunchOptions) -> None:
     print(f"Loaded config: {relative_to_repo(resolve_repo_path(options.config_file))}")
     start_infrastructure(
         compose_file=compose_file,
+        profiles=config.compose_profiles,
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )

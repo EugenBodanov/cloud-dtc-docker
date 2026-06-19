@@ -155,6 +155,7 @@ The main settings are stored in `orchestrator_config.json`:
 ```json
 {
   "compose_file": "docker-compose.yaml",
+  "compose_profiles": ["pipeline"],
   "digital_twin_name": "dtwin",
   "path_maps": [],
   "show_container_logs": false,

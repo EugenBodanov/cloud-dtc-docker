@@ -1,5 +1,6 @@
 {
   "compose_file": "docker-compose.yaml",
+  "compose_profiles": ["pipeline"],
   "digital_twin_name": "dtwin",
   "generated_twin_dir": null,
   "aws_credentials_file": null,

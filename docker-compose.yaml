@@ -1,5 +1,7 @@
 services:
   enterprise-architect:
+    profiles:
+      - pipeline
     platform: linux/amd64
     image: evbodanov/enterprise-architect-wine:v1
     container_name: enterprise-architect
@@ -13,6 +15,8 @@ services:
       SCREEN_RESOLUTION: "1600x900x24"
 
   sysml-kernel:
+    profiles:
+      - pipeline
     image: csba184/sysml.jupyter:latest
     container_name: sysml-kernel-container
     tty: true
@@ -27,6 +31,8 @@ services:
       SYSML_API_SERVER: "http://sysmlapiserver:9000"
 
   digital-twin-profile-sysml-v1:
+    profiles:
+      - pipeline
     image: evbodanov/digital-twin-profile-sysml-v1:v1
     container_name: digital-twin-profile-sysml-v1
     environment:
@@ -40,6 +46,8 @@ services:
         read_only: true
 
   digital-twin-profile-sysml-v2:
+    profiles:
+      - pipeline
     image: evbodanov/digital-twin-profile-sysml-v2:v1
     container_name: digital-twin-profile-sysml-v2
     depends_on:
@@ -57,6 +65,8 @@ services:
         read_only: true
 
   digital-twin-manager:
+    profiles:
+      - pipeline
     image: evbodanov/digital-twin-manager:v1
     container_name: digital-twin-manager
     stdin_open: true
@@ -74,6 +84,19 @@ services:
         source: ${PIPELINE_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
         read_only: true
+  cloud-deployer-test-simulator:
+    image: evbodanov/cloud-deployer-test-simulator:v1
+    container_name: cloud-deployer-test-simulator
+    profiles:
+      - simulator
+    environment:
+      SIMULATOR_MOCK_AWS: "${SIMULATOR_MOCK_AWS:-true}"
+    volumes:
+      - ./pipeline/digital-twin-manager/input/config.json:/app/config.json:ro
+      - ./pipeline/digital-twin-manager/input/config_hierarchy.json:/app/config_hierarchy.json:ro
+      - ./pipeline/digital-twin-manager/input/config_iot_devices.json:/app/config_iot_devices.json:ro
+    ports:
+      - 127.0.0.1:5000:5000
 
 volumes:
   enterprise-architect-wine:

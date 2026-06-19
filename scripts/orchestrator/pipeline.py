@@ -46,6 +46,7 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
     run_converter(
         converter,
         compose_file=compose_file,
+        profiles=config.compose_profiles,
         container_input_file=container_input_file,
         digital_twin_name=config.digital_twin_name,
         path_maps=config.path_maps,
@@ -83,6 +84,7 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
 
     run_manager_deploy(
         compose_file=compose_file,
+        profiles=config.compose_profiles,
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
