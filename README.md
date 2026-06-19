@@ -80,7 +80,7 @@ C:\users\ea\Documents\enterprise-architect\input\model.xml
 Start the watcher from the repository root:
 
 ```powershell
-python run_pipeline
+python run_pipeline.py
 ```
 
 On startup it brings up:
@@ -103,7 +103,7 @@ exit
 To run automatically without confirmation when an export changes:
 
 ```powershell
-python run_pipeline --auto-run
+python run_pipeline.py --auto-run
 ```
 
 You can also set this in `orchestrator_config.json`:
@@ -111,6 +111,22 @@ You can also set this in `orchestrator_config.json`:
 ```json
 "auto_run": true
 ```
+
+To stop and remove the `enterprise-architect` and `sysml-kernel` containers
+when the watcher exits:
+
+```powershell
+python run_pipeline.py --remove-infrastructure-on-exit
+```
+
+Or set this in `orchestrator_config.json`:
+
+```json
+"remove_infrastructure_on_exit": true
+```
+
+This removes only the containers. Docker volumes such as the Enterprise
+Architect Wine prefix are kept.
 
 ## Export Routing
 
@@ -161,7 +177,8 @@ The main settings are stored in `orchestrator_config.json`:
   "show_container_logs": false,
   "show_configs": true,
   "deploy_to_aws": false,
-  "auto_run": false
+  "auto_run": false,
+  "remove_infrastructure_on_exit": false
 }
 ```
 

@@ -14,6 +14,7 @@
   "show_output_configs": false,
   "deploy_to_aws": false,
   "auto_run": false,
+  "remove_infrastructure_on_exit": true,
   "watch": {
     "directory": "enterprise-architect/output",
     "poll_interval_seconds": 2.0,

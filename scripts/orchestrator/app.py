@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .cli import LaunchOptions
 from .config import PipelineConfig, load_pipeline_config, print_run_config
-from .docker_compose import start_infrastructure
+from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
 from .pipeline import run_pipeline
 from .pipeline_paths import relative_to_repo, resolve_repo_path
@@ -20,34 +20,49 @@ def run_app(options: LaunchOptions) -> None:
     config = load_pipeline_config(options.config_file)
     if options.auto_run:
         config = config.with_auto_run(True)
+    if options.remove_infrastructure_on_exit:
+        config = config.with_remove_infrastructure_on_exit(True)
 
     compose_file = resolve_repo_path(config.compose_file)
     watch_directory = resolve_repo_path(config.watch.directory)
 
     print(f"Loaded config: {relative_to_repo(resolve_repo_path(options.config_file))}")
-    start_infrastructure(
-        compose_file=compose_file,
-        profiles=config.compose_profiles,
-        build_images=config.build_images,
-        show_container_logs=config.show_container_logs,
-    )
-    _print_infrastructure_ready()
-
-    watcher = OutputFileWatcher(watch_directory, settle_seconds=config.watch.settle_seconds)
-    watcher.reset()
-
-    user_input = UserInput()
-    user_input.start()
-
-    print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
-    print("Type 'exit' and press Enter to stop.")
-    if config.auto_run:
-        print("Auto-run is enabled.")
-
     try:
+        start_infrastructure(
+            compose_file=compose_file,
+            profiles=config.compose_profiles,
+            build_images=config.build_images,
+            show_container_logs=config.show_container_logs,
+        )
+        _print_infrastructure_ready()
+
+        watcher = OutputFileWatcher(watch_directory, settle_seconds=config.watch.settle_seconds)
+        watcher.reset()
+
+        user_input = UserInput()
+        user_input.start()
+
+        print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
+        print("Type 'exit' and press Enter to stop.")
+        if config.auto_run:
+            print("Auto-run is enabled.")
+        if config.remove_infrastructure_on_exit:
+            print("Infrastructure containers will be removed when the watcher exits.")
+
         _watch_forever(config, watcher, user_input)
     except StopRequested:
-        print("\nStopping run loop. Docker services remain running.")
+        print("\nStopping run loop.")
+    except KeyboardInterrupt:
+        print("\nStopping run loop.")
+    finally:
+        if config.remove_infrastructure_on_exit:
+            remove_infrastructure(
+                compose_file=compose_file,
+                profiles=config.compose_profiles,
+                show_container_logs=config.show_container_logs,
+            )
+        else:
+            print("Docker services remain running.")
 
 
 def _watch_forever(config: PipelineConfig, watcher: OutputFileWatcher, user_input: UserInput) -> None:

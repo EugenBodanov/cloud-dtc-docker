@@ -11,6 +11,7 @@ from .pipeline_paths import DEFAULT_CONFIG_FILE
 class LaunchOptions:
     config_file: Path
     auto_run: bool
+    remove_infrastructure_on_exit: bool
 
 
 def parse_args() -> LaunchOptions:
@@ -30,9 +31,16 @@ def parse_args() -> LaunchOptions:
         default=False,
         help="Run the pipeline automatically when a watched export changes.",
     )
+    parser.add_argument(
+        "--remove-infrastructure-on-exit",
+        action="store_true",
+        default=False,
+        help="Stop and remove enterprise-architect and sysml-kernel when the watcher exits.",
+    )
 
     args = parser.parse_args()
     return LaunchOptions(
         config_file=args.config_file,
         auto_run=args.auto_run,
+        remove_infrastructure_on_exit=args.remove_infrastructure_on_exit,
     )

@@ -6,6 +6,8 @@ from .command_runner import run_command
 from .errors import fail
 from .pipeline_paths import PROFILE_SERVICES, relative_to_repo
 
+INFRASTRUCTURE_SERVICES = ("enterprise-architect", "sysml-kernel")
+
 
 def compose_command(compose_file: Path, profiles: tuple[str, ...] = ()) -> list[str]:
     command = ["docker", "compose", "-f", str(compose_file)]
@@ -21,16 +23,34 @@ def start_infrastructure(
     build_images: bool,
     show_container_logs: bool,
 ) -> None:
-    services = ["enterprise-architect", "sysml-kernel"]
     print("\nStarting infrastructure services:")
-    for service in services:
+    for service in INFRASTRUCTURE_SERVICES:
         print(f"- {service}")
     print(f"Docker Compose file: {relative_to_repo(compose_file)}")
 
     command = compose_command(compose_file, profiles) + ["up", "-d"]
     if build_images:
         command.append("--build")
-    command.extend(services)
+    command.extend(INFRASTRUCTURE_SERVICES)
+    run_command(command, show_output=show_container_logs)
+
+
+def remove_infrastructure(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    show_container_logs: bool,
+) -> None:
+    print("\nRemoving infrastructure containers:")
+    for service in INFRASTRUCTURE_SERVICES:
+        print(f"- {service}")
+
+    command = compose_command(compose_file, profiles) + [
+        "rm",
+        "--force",
+        "--stop",
+        *INFRASTRUCTURE_SERVICES,
+    ]
     run_command(command, show_output=show_container_logs)
 
 

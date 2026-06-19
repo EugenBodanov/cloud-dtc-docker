@@ -36,10 +36,14 @@ class PipelineConfig:
     show_output_configs: bool
     deploy_to_aws: bool
     auto_run: bool
+    remove_infrastructure_on_exit: bool
     watch: WatchConfig
 
     def with_auto_run(self, enabled: bool) -> PipelineConfig:
         return replace(self, auto_run=enabled)
+
+    def with_remove_infrastructure_on_exit(self, enabled: bool) -> PipelineConfig:
+        return replace(self, remove_infrastructure_on_exit=enabled)
 
 
 def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineConfig:
@@ -70,6 +74,7 @@ def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineCon
         show_output_configs=_boolean(raw, "show_output_configs", False),
         deploy_to_aws=_boolean(raw, "deploy_to_aws", False),
         auto_run=_boolean(raw, "auto_run", False),
+        remove_infrastructure_on_exit=_boolean(raw, "remove_infrastructure_on_exit", False),
         watch=WatchConfig(
             directory=_path(watch_raw, "directory", "enterprise-architect/output"),
             poll_interval_seconds=_positive_float(watch_raw, "poll_interval_seconds", 2.0),
@@ -95,6 +100,7 @@ def run_config_snapshot(config: PipelineConfig, *, source: Path, converter: str)
         "show_output_configs": config.show_output_configs,
         "deploy_to_aws": config.deploy_to_aws,
         "auto_run": config.auto_run,
+        "remove_infrastructure_on_exit": config.remove_infrastructure_on_exit,
     }
 
 
