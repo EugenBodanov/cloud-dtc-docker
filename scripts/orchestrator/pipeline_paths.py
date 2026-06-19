@@ -6,7 +6,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPOSE_FILE = REPO_ROOT / "docker-compose.yaml"
 PIPELINE_ROOT = REPO_ROOT / "pipeline"
-ENTERPRISE_ARCHITECT_MODELS_DIR = REPO_ROOT / "enterprise-architect" / "models"
+ENTERPRISE_ARCHITECT_INPUT_DIR = REPO_ROOT / "enterprise-architect" / "input"
 
 CONFIG_FILES = (
     "config.json",
@@ -48,8 +48,8 @@ def converter_label(converter: str) -> str:
 
 def default_enterprise_architect_export(converter: str) -> Path:
     if converter == "v1":
-        return ENTERPRISE_ARCHITECT_MODELS_DIR / "model.xml"
-    return ENTERPRISE_ARCHITECT_MODELS_DIR
+        return ENTERPRISE_ARCHITECT_INPUT_DIR / "model.xml"
+    return ENTERPRISE_ARCHITECT_INPUT_DIR
 
 
 def resolve_repo_path(path: Path) -> Path:

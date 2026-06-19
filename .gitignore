@@ -9,8 +9,13 @@
 !scripts/**
 
 !enterprise-architect/
-!enterprise-architect/models/
-!enterprise-architect/models/**
+!enterprise-architect/input/
+!enterprise-architect/input/demo_model.xml
+!enterprise-architect/output/
+!enterprise-architect/output/demo_export_1.xml
+!enterprise-architect/output/demo_export_1.sysml
+!enterprise-architect/projects/
+!enterprise-architect/projects/DemoProject.qea
 
 !demo-code/
 !demo-code/**

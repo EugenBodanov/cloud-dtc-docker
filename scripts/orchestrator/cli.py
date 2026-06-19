@@ -32,10 +32,10 @@ def parse_args() -> PipelineOptions:
         epilog=(
             "Examples:\n"
             "  python -m scripts.orchestrator.orchestrate_pipeline --converter sysml-v1 "
-            "--ea-export enterprise-architect/models/model.xml --digital-twin-name dtwin "
+            "--ea-export enterprise-architect/input/model.xml --digital-twin-name dtwin "
             "--show-configs\n"
             "  python -m scripts.orchestrator.orchestrate_pipeline --converter sysml-v2 "
-            "--ea-export enterprise-architect/models/model.sysml --stop-before-aws-deploy"
+            "--ea-export enterprise-architect/input/model.sysml --stop-before-aws-deploy"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -61,8 +61,8 @@ def parse_args() -> PipelineOptions:
             "Input file or directory for the selected converter. "
             "sysml-v1 expects Enterprise Architect .xml/.xmi. "
             "sysml-v2 expects .sysml text files. "
-            "Default for sysml-v1: enterprise-architect/models/model.xml. "
-            "Default for sysml-v2: enterprise-architect/models."
+            "Default for sysml-v1: enterprise-architect/input/model.xml. "
+            "Default for sysml-v2: enterprise-architect/input."
         ),
     )
 

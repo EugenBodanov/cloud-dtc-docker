@@ -7,7 +7,7 @@ services:
       - "127.0.0.1:6080:6080"
     volumes:
       - enterprise-architect-wine:/home/ea/.wine
-      - ./enterprise-architect/models:/models
+      - ./enterprise-architect:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect
     environment:
       SCREEN_RESOLUTION: "1600x900x24"
 

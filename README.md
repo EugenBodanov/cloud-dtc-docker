@@ -31,12 +31,55 @@ To use another compose file, pass:
 --compose-file path/to/docker-compose.yaml
 ```
 
+## Enterprise Architect UI Storage
+
+Enterprise Architect is available at:
+
+```text
+http://127.0.0.1:6080
+```
+
+The repository directory `enterprise-architect` is mounted into the UI
+container at:
+
+```text
+/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect
+```
+
+In Enterprise Architect's Wine file picker, the same directory is available as:
+
+```text
+C:\users\ea\Documents\enterprise-architect
+```
+
+Save Enterprise Architect project files (`.qea`, `.qeax`, `.eap`, `.eapx`) under:
+
+```text
+enterprise-architect/projects
+```
+
+Save exports that the pipeline should read under:
+
+```text
+enterprise-architect/input
+```
+
+Use `enterprise-architect/output` for manual UI exports or scratch results that
+should not be treated as pipeline input.
+
+Those files are stored on the host and survive container restarts. The existing
+export can be opened or imported from:
+
+```text
+C:\users\ea\Documents\enterprise-architect\input\model.xml
+```
+
 ## Demo: SysML v1
 
 SysML v1 reads the Enterprise Architect XML/XMI export from:
 
 ```text
-enterprise-architect/models
+enterprise-architect/input
 ```
 
 Demo command:
@@ -44,7 +87,7 @@ Demo command:
 ```powershell
 python -m orchestrate_pipeline `
   --converter sysml-v1 `
-  --ea-export enterprise-architect/models `
+  --ea-export enterprise-architect/input `
   --show-configs `
   --stop-before-aws-deploy `
   --hide-container-logs `
@@ -81,7 +124,7 @@ demo-code/microgrid/stopCharging
 SysML v2 reads `.sysml` files from:
 
 ```text
-enterprise-architect/models
+enterprise-architect/input
 ```
 
 Demo command:
@@ -89,7 +132,7 @@ Demo command:
 ```powershell
 python -m orchestrate_pipeline `
   --converter sysml-v2 `
-  --ea-export enterprise-architect/models `
+  --ea-export enterprise-architect/input `
   --show-configs `
   --stop-before-aws-deploy `
   --hide-container-logs
