@@ -1,5 +1,6 @@
 services:
   enterprise-architect:
+    platform: linux/amd64
     image: evbodanov/enterprise-architect-wine:v1
     container_name: enterprise-architect
     shm_size: "1gb"
