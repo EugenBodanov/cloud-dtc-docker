@@ -3,7 +3,9 @@
 !.gitignore
 !README.md
 !docker-compose.yaml
-!orchestrate_pipeline.py
+!orchestrator_config.json
+!run_pipeline
+!run_pipeline.py
 
 !scripts/
 !scripts/**

@@ -25,10 +25,10 @@ The default compose file is:
 docker-compose.yaml
 ```
 
-To use another compose file, pass:
+Pipeline settings live in:
 
-```powershell
---compose-file path/to/docker-compose.yaml
+```text
+orchestrator_config.json
 ```
 
 ## Enterprise Architect UI Storage
@@ -58,44 +58,73 @@ Save Enterprise Architect project files (`.qea`, `.qeax`, `.eap`, `.eapx`) under
 enterprise-architect/projects
 ```
 
-Save exports that the pipeline should read under:
+Save Enterprise Architect exports under:
 
 ```text
-enterprise-architect/input
+enterprise-architect/output
 ```
 
-Use `enterprise-architect/output` for manual UI exports or scratch results that
-should not be treated as pipeline input.
+The run loop watches this directory. When a new export is created or an existing
+export is updated, it prints the run configuration and asks whether to run the
+pipeline.
 
 Those files are stored on the host and survive container restarts. The existing
-export can be opened or imported from:
+input example can be opened or imported from:
 
 ```text
 C:\users\ea\Documents\enterprise-architect\input\model.xml
 ```
 
-## Demo: SysML v1
+## Running The Pipeline
 
-SysML v1 reads the Enterprise Architect XML/XMI export from:
-
-```text
-enterprise-architect/input
-```
-
-Demo command:
+Start the watcher from the repository root:
 
 ```powershell
-python -m orchestrate_pipeline `
-  --converter sysml-v1 `
-  --ea-export enterprise-architect/input `
-  --show-configs `
-  --stop-before-aws-deploy `
-  --hide-container-logs `
-  --path-map "C:/Users/marco/Git-projects/anyFile/digital-twin-manager/lambda_functions/event_actions/stopCharging=/pipeline/code/microgrid/stopCharging"
+python run_pipeline
 ```
 
-The `--path-map` is required because `model.xml` contains a hardcoded absolute
-path from another machine:
+On startup it brings up:
+
+- `enterprise-architect`
+- `sysml-kernel`
+
+Then it watches:
+
+```text
+enterprise-architect/output
+```
+
+Type this into the running process to stop it:
+
+```text
+exit
+```
+
+To run automatically without confirmation when an export changes:
+
+```powershell
+python run_pipeline --auto-run
+```
+
+You can also set this in `orchestrator_config.json`:
+
+```json
+"auto_run": true
+```
+
+## Export Routing
+
+The converter is selected from the updated export file extension:
+
+- `.xml` or `.xmi` -> `digital-twin-profile-sysml-v1`
+- `.sysml` -> `digital-twin-profile-sysml-v2`
+
+For `.xml` or `.xmi`, export from Enterprise Architect as XMI 2.1/UML 2.1 with
+Enterprise Architect extension data. The sysml-v1 converter does not support
+the older XMI 1.1/UML 1.3 export layout.
+
+The current demo `path_maps` value in `orchestrator_config.json` is required
+because the XML model contains a hardcoded absolute path from another machine:
 
 ```text
 C:\Users\marco\Git-projects\anyFile\digital-twin-manager\lambda_functions\event_actions\stopCharging
@@ -107,7 +136,7 @@ Inside the Docker pipeline, Lambda code is mounted under:
 /pipeline/code
 ```
 
-So the demo maps the old path to:
+So the config maps the old path to:
 
 ```text
 /pipeline/code/microgrid/stopCharging
@@ -119,35 +148,33 @@ For this to work, the repository must include the demo Lambda folder:
 demo-code/microgrid/stopCharging
 ```
 
-## Demo: SysML v2
+## Config
 
-SysML v2 reads `.sysml` files from:
+The main settings are stored in `orchestrator_config.json`:
 
-```text
-enterprise-architect/input
-```
-
-Demo command:
-
-```powershell
-python -m orchestrate_pipeline `
-  --converter sysml-v2 `
-  --ea-export enterprise-architect/input `
-  --show-configs `
-  --stop-before-aws-deploy `
-  --hide-container-logs
+```json
+{
+  "compose_file": "docker-compose.yaml",
+  "digital_twin_name": "dtwin",
+  "path_maps": [],
+  "show_container_logs": false,
+  "show_configs": true,
+  "deploy_to_aws": false,
+  "auto_run": false
+}
 ```
 
 ## What The Demo Shows
 
-The orchestrator prints:
+The run loop prints:
 
+- the changed Enterprise Architect export file;
 - the selected converter;
-- the Docker Compose file name;
-- the input model file name or `.sysml` content;
+- the Docker Compose file;
+- the config that will be used for this run;
 - the generated config files copied into `digital-twin-manager` input.
 
-With `--show-configs`, configs are printed from:
+When `show_configs` is `true`, configs are printed from:
 
 ```text
 pipeline/digital-twin-manager/input
@@ -162,44 +189,5 @@ config_iot_devices.json
 config_events.json
 ```
 
-The command stops before AWS deploy because of:
-
-```powershell
---stop-before-aws-deploy
-```
-
-## Useful Flags
-
-```text
---hide-container-logs
-```
-
-Hides Docker/container logs during a clean demo. If a container fails, the error
-output is still shown.
-
-```text
---show-configs
-```
-
-Prints the final configs prepared for `digital-twin-manager` input.
-
-```text
---show-output-configs
-```
-
-Also prints configs directly from the converter output directory. This is off by
-default to avoid duplicate config output during presentation.
-
-```text
---build-images
-```
-
-Builds Docker images before running containers. By default, the orchestrator
-uses existing local images.
-
-```text
---deploy-to-aws
-```
-
-Runs `digital-twin-manager deploy`. Do not use this during the safe demo unless
-AWS credentials and deploy intent are confirmed.
+AWS deploy is controlled by `deploy_to_aws`. Leave it `false` during safe demos
+unless AWS credentials and deploy intent are confirmed.

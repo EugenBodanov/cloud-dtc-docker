@@ -1,1 +1,1 @@
-"""Pipeline orchestration helpers."""
+"""Pipeline run loop helpers."""

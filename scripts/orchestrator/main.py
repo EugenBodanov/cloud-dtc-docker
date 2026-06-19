@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from .app import run_app
 from .cli import parse_args
-from .pipeline import run_pipeline
 
 
 def main() -> None:
-    run_pipeline(parse_args())
+    run_app(parse_args())

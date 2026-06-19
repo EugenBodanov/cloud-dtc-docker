@@ -4,9 +4,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_COMPOSE_FILE = REPO_ROOT / "docker-compose.yaml"
+DEFAULT_CONFIG_FILE = REPO_ROOT / "orchestrator_config.json"
 PIPELINE_ROOT = REPO_ROOT / "pipeline"
-ENTERPRISE_ARCHITECT_INPUT_DIR = REPO_ROOT / "enterprise-architect" / "input"
 
 CONFIG_FILES = (
     "config.json",
@@ -34,31 +33,19 @@ MANAGER_INPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "input"
 MANAGER_OUTPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "output"
 
 
-def normalize_converter(value: str) -> str:
-    if value == "sysml-v1":
-        return "v1"
-    if value == "sysml-v2":
-        return "v2"
-    raise ValueError(f"Unsupported converter: {value}")
-
-
 def converter_label(converter: str) -> str:
     return "sysml-v1" if converter == "v1" else "sysml-v2"
 
 
-def default_enterprise_architect_export(converter: str) -> Path:
-    if converter == "v1":
-        return ENTERPRISE_ARCHITECT_INPUT_DIR / "model.xml"
-    return ENTERPRISE_ARCHITECT_INPUT_DIR
-
-
-def resolve_repo_path(path: Path) -> Path:
+def resolve_repo_path(path: Path | str) -> Path:
+    path = Path(path)
     if path.is_absolute():
         return path.resolve()
     return (REPO_ROOT / path).resolve()
 
 
-def relative_to_repo(path: Path) -> str:
+def relative_to_repo(path: Path | str) -> str:
+    path = Path(path)
     try:
         return str(path.resolve().relative_to(REPO_ROOT))
     except ValueError:

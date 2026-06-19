@@ -1,0 +1,21 @@
+{
+  "compose_file": "docker-compose.yaml",
+  "digital_twin_name": "dtwin",
+  "generated_twin_dir": null,
+  "aws_credentials_file": null,
+  "path_maps": [
+    "C:/Users/marco/Git-projects/anyFile/digital-twin-manager/lambda_functions/event_actions/stopCharging=/pipeline/code/microgrid/stopCharging"
+  ],
+  "build_images": false,
+  "clean_stage": true,
+  "show_container_logs": false,
+  "show_configs": true,
+  "show_output_configs": false,
+  "deploy_to_aws": false,
+  "auto_run": false,
+  "watch": {
+    "directory": "enterprise-architect/output",
+    "poll_interval_seconds": 2.0,
+    "settle_seconds": 1.0
+  }
+}

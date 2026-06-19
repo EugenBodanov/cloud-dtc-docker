@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .command_runner import run_command
 from .errors import fail
-from .pipeline_paths import PROFILE_SERVICES
+from .pipeline_paths import PROFILE_SERVICES, relative_to_repo
 
 
 def compose_command(compose_file: Path) -> list[str]:
@@ -12,15 +12,16 @@ def compose_command(compose_file: Path) -> list[str]:
 
 
 def start_infrastructure(
-    converter: str,
     *,
     compose_file: Path,
     build_images: bool,
     show_container_logs: bool,
 ) -> None:
-    services = ["enterprise-architect"]
-    if converter == "v2":
-        services.append("sysml-kernel")
+    services = ["enterprise-architect", "sysml-kernel"]
+    print("\nStarting infrastructure services:")
+    for service in services:
+        print(f"- {service}")
+    print(f"Docker Compose file: {relative_to_repo(compose_file)}")
 
     command = compose_command(compose_file) + ["up", "-d"]
     if build_images:

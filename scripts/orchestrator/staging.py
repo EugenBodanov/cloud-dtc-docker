@@ -16,6 +16,7 @@ from .pipeline_paths import (
     relative_to_repo,
     resolve_repo_path,
 )
+from .xmi_validation import validate_sysml_v1_export
 
 
 def clean_pipeline_dir(path: Path) -> None:
@@ -172,6 +173,7 @@ def _stage_sysml_v1_input(source: Path, input_dir: Path) -> tuple[str, list[Path
     source = _select_sysml_v1_input(source)
     if not source.is_file():
         fail(f"Enterprise Architect export file does not exist: {relative_to_repo(source)}")
+    validate_sysml_v1_export(source)
 
     target = input_dir / source.name
     shutil.copy2(source, target)
@@ -195,7 +197,7 @@ def _select_sysml_v1_input(source: Path) -> Path:
             fail(f"No .xmi or .xml files found in {relative_to_repo(source)}")
         if len(candidates) > 1:
             names = ", ".join(relative_to_repo(path) for path in candidates)
-            fail(f"More than one .xmi/.xml file found. Pass --ea-export explicitly. Candidates: {names}")
+            fail(f"More than one .xmi/.xml file found. Export or update one file at a time. Candidates: {names}")
         return candidates[0]
     return source
 
@@ -209,8 +211,7 @@ def _select_sysml_v2_inputs(source: Path) -> list[Path]:
                 names = ", ".join(relative_to_repo(path) for path in xml_exports)
                 fail(
                     "Found Enterprise Architect XML/XMI export(s), but sysml-v2 cannot read them: "
-                    f"{names}. Use --converter sysml-v1 for model.xml/model.xmi, or pass a .sysml "
-                    "text file to --ea-export for sysml-v2."
+                    f"{names}. XML/XMI exports are routed to sysml-v1; sysml-v2 needs a .sysml text file."
                 )
             fail(
                 f"No .sysml files found in {relative_to_repo(source)}. "
@@ -224,8 +225,7 @@ def _select_sysml_v2_inputs(source: Path) -> list[Path]:
         if source.suffix.lower() in (".xml", ".xmi"):
             fail(
                 "sysml-v2 cannot read Enterprise Architect XML/XMI exports. "
-                f"Use --converter sysml-v1 for {relative_to_repo(source)}, or pass a .sysml "
-                "text file to --ea-export for sysml-v2."
+                f"XML/XMI exports are routed to sysml-v1: {relative_to_repo(source)}."
             )
         fail(f"SysML v2 parser reads .sysml text files only, got: {relative_to_repo(source)}")
     return [source]
