@@ -30,6 +30,19 @@ services:
     environment:
       SYSML_API_SERVER: "http://sysmlapiserver:9000"
 
+  fed-sysml:
+    profiles:
+      - pipeline
+    image: evbodanov/fed-sysml:v1
+    container_name: fed-sysml
+    volumes:
+      - ./pipeline/fed-sysml/input:/pipeline/input
+      - ./pipeline/fed-sysml/output:/pipeline/output
+      - type: bind
+        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        target: /pipeline/code
+        read_only: true
+
   digital-twin-profile-sysml-v1:
     profiles:
       - pipeline

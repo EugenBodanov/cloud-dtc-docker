@@ -13,6 +13,8 @@ from .pipeline_paths import (
     PIPELINE_ROOT,
     PROFILE_INPUT_DIRS,
     PROFILE_OUTPUT_DIRS,
+    FEDERATION_INPUT_DIR,
+    FEDERATION_OUTPUT_DIR,
     relative_to_repo,
     resolve_repo_path,
 )
@@ -89,6 +91,18 @@ def prepare_manager_stage(*, clean_stage: bool, keep_credentials: bytes | None) 
         (MANAGER_INPUT_DIR / "config_credentials.json").write_bytes(keep_credentials)
 
 
+def prepare_federation_stage(*, clean_stage: bool) -> None:
+    strategy_input_dir = FEDERATION_INPUT_DIR / "strategyInputs"
+    if clean_stage:
+        ensure_dir(FEDERATION_INPUT_DIR)
+        clean_pipeline_dir(strategy_input_dir)
+        clean_pipeline_dir(FEDERATION_OUTPUT_DIR)
+    else:
+        ensure_dir(FEDERATION_INPUT_DIR)
+        ensure_dir(strategy_input_dir)
+        ensure_dir(FEDERATION_OUTPUT_DIR)
+
+
 def read_existing_manager_credentials() -> bytes | None:
     credentials = MANAGER_INPUT_DIR / "config_credentials.json"
     if credentials.is_file():
@@ -110,6 +124,29 @@ def copy_configs_to_manager(converter_output_dir: Path, aws_credentials_file: Pa
         target = MANAGER_INPUT_DIR / "config_credentials.json"
         shutil.copy2(credentials, target)
         print(f"Copied AWS credentials to {relative_to_repo(target)}")
+
+
+def stage_federation_inputs() -> list[Path]:
+    for file_name in ("fedtwin.json", "brokerConfig.json"):
+        config_file = FEDERATION_INPUT_DIR / file_name
+        if not config_file.is_file():
+            fail(f"Missing fed-sysml config file: {relative_to_repo(config_file)}")
+
+    source_files = sorted(MANAGER_OUTPUT_DIR.glob("*_federation_input.json"))
+    if not source_files:
+        fail(f"No federation input files found under {relative_to_repo(MANAGER_OUTPUT_DIR)}")
+
+    target_dir = FEDERATION_INPUT_DIR / "strategyInputs"
+    ensure_dir(target_dir)
+
+    staged_files: list[Path] = []
+    for source in source_files:
+        target = target_dir / source.name
+        shutil.copy2(source, target)
+        staged_files.append(target)
+        print(f"Copied {relative_to_repo(source)} -> {relative_to_repo(target)}")
+
+    return staged_files
 
 
 def print_config_set(label: str, config_dir: Path) -> None:

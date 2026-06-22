@@ -7,7 +7,7 @@ from .cli import LaunchOptions
 from .config import PipelineConfig, load_pipeline_config, print_run_config
 from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
-from .pipeline import run_pipeline
+from .pipeline import run_federation_stage, run_pipeline
 from .pipeline_paths import relative_to_repo, resolve_repo_path
 from .user_input import UserInput
 
@@ -43,6 +43,7 @@ def run_app(options: LaunchOptions) -> None:
         user_input.start()
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
+        print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
         print("Type 'exit' and press Enter to stop.")
         if config.auto_run:
             print("Auto-run is enabled.")
@@ -69,7 +70,7 @@ def _watch_forever(config: PipelineConfig, watcher: OutputFileWatcher, user_inpu
     while True:
         command = user_input.get_line(timeout=config.watch.poll_interval_seconds)
         if command is not None:
-            _handle_command(command)
+            _handle_command(config, command)
 
         for change in watcher.poll():
             _handle_file_change(config, change, user_input)
@@ -91,10 +92,16 @@ def _handle_file_change(config: PipelineConfig, change: FileChange, user_input: 
         _run_pipeline_safely(config, change.path, change.converter)
         return
 
-    if _prompt_yes_no(user_input, "Run pipeline for this export? [y/N] "):
-        _run_pipeline_safely(config, change.path, change.converter)
-    else:
+    if not _prompt_yes_no(user_input, "Run pipeline for this export? [y/N] "):
         print("Skipped pipeline run.")
+        return
+
+    run_config = config
+    if config.deploy_to_aws:
+        run_federation = _prompt_yes_no(user_input, "Run federation workflow for this export? [y/N] ")
+        run_config = config.with_run_federation_workflow(run_federation)
+        print(f"Federation workflow for this run: {'enabled' if run_federation else 'disabled'}.")
+    _run_pipeline_safely(run_config, change.path, change.converter)
 
 
 def _run_pipeline_safely(config: PipelineConfig, source: Path, converter: str) -> None:
@@ -103,6 +110,14 @@ def _run_pipeline_safely(config: PipelineConfig, source: Path, converter: str) -
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
         print(f"\nPipeline failed with exit code {code}. Watching will continue.")
+
+
+def _run_federation_safely(config: PipelineConfig) -> None:
+    try:
+        run_federation_stage(config)
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nFederation step failed with exit code {code}. Watching will continue.")
 
 
 def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
@@ -121,17 +136,42 @@ def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
         print("Please answer 'y', 'n', or 'exit': ", end="", flush=True)
 
 
-def _handle_command(command: str) -> None:
+def _handle_command(config: PipelineConfig, command: str) -> None:
     value = command.strip().lower()
     if not value:
         return
     if _is_exit(value):
         raise StopRequested
-    print("Unknown command. Type 'exit' to stop.")
+    if _is_continue_fed_sysml(value):
+        print("Continuing from fed-sysml.")
+        _run_federation_safely(config)
+        return
+    if value in ("help", "?"):
+        _print_commands()
+        return
+    print("Unknown command. Type 'help' for commands or 'exit' to stop.")
 
 
 def _is_exit(value: str) -> bool:
     return value in ("exit", "quit", "q")
+
+
+def _is_continue_fed_sysml(value: str) -> bool:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    return tokens in (
+        ["fed", "sysml"],
+        ["federation"],
+        ["continue", "fed", "sysml"],
+        ["continue", "with", "fed", "sysml"],
+        ["continue", "federation"],
+        ["continue", "with", "federation"],
+    )
+
+
+def _print_commands() -> None:
+    print("Available commands:")
+    print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
+    print("- exit                Stop the watcher.")
 
 
 def _print_infrastructure_ready() -> None:

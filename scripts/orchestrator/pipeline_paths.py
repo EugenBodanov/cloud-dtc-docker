@@ -32,6 +32,8 @@ PROFILE_OUTPUT_DIRS = {
 MANAGER_INPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "input"
 MANAGER_OUTPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "output"
 
+FEDERATION_INPUT_DIR = PIPELINE_ROOT / "fed-sysml" / "input"
+FEDERATION_OUTPUT_DIR = PIPELINE_ROOT / "fed-sysml" / "output"
 
 def converter_label(converter: str) -> str:
     return "sysml-v1" if converter == "v1" else "sysml-v2"

@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import PipelineConfig
-from .docker_compose import run_converter, run_manager_deploy
+from .docker_compose import run_converter, run_manager_deploy, run_fed_sysml
 from .pipeline_paths import (
+    FEDERATION_OUTPUT_DIR,
     MANAGER_INPUT_DIR,
+    MANAGER_OUTPUT_DIR,
     converter_label,
     relative_to_repo,
     resolve_repo_path,
@@ -15,11 +17,14 @@ from .staging import (
     copy_configs_to_manager,
     find_converter_output,
     prepare_manager_stage,
+    prepare_federation_stage,
     print_file_listing,
     print_config_set,
+    print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
     stage_converter_input,
+    stage_federation_inputs,
 )
 
 
@@ -27,6 +32,8 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+    if config.run_federation_workflow and not config.deploy_to_aws:
+        fail("run_federation_workflow requires deploy_to_aws=true because fed-sysml uses digital-twin-manager deploy output.")
 
     source = resolve_repo_path(source)
 
@@ -88,3 +95,28 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
+    print_manager_outputs()
+
+    if not config.run_federation_workflow:
+        print("\nStopped before federation workflow. Manager output is ready in " + relative_to_repo(MANAGER_OUTPUT_DIR))
+        return
+
+    run_federation_stage(config)
+
+
+def run_federation_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    prepare_federation_stage(clean_stage=config.clean_stage)
+    federation_inputs = stage_federation_inputs()
+    print_file_listing("fed-sysml strategy input(s)", federation_inputs)
+
+    run_fed_sysml(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+    )
+    print_file_listing("fed-sysml output", sorted(FEDERATION_OUTPUT_DIR.glob("*")))

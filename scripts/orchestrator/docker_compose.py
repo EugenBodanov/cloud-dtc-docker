@@ -93,3 +93,17 @@ def run_manager_deploy(
         command.append("--build")
     command.append("digital-twin-manager")
     run_command(command, stdin="deploy\nexit\n", show_output=show_container_logs)
+
+
+def run_fed_sysml(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    command = compose_command(compose_file, profiles) + ["run", "--rm", "-T"]
+    if build_images:
+        command.append("--build")
+    command.append("fed-sysml")
+    run_command(command, show_output=show_container_logs)

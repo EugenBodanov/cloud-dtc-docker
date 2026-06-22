@@ -22,4 +22,11 @@
 !demo-code/
 !demo-code/**
 
+!pipeline/
+!pipeline/fed-sysml/
+!pipeline/fed-sysml/input/
+pipeline/fed-sysml/input/*
+!pipeline/fed-sysml/input/brokerConfig.example.json
+!pipeline/fed-sysml/input/fedtwin.example.json
+
 **/__pycache__/

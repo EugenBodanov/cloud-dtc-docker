@@ -13,6 +13,7 @@
   "show_configs": true,
   "show_output_configs": false,
   "deploy_to_aws": false,
+  "run_federation_workflow": false,
   "auto_run": false,
   "remove_infrastructure_on_exit": true,
   "watch": {
