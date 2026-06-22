@@ -104,6 +104,9 @@ services:
       - simulator
     environment:
       SIMULATOR_MOCK_AWS: "${SIMULATOR_MOCK_AWS:-true}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-eu-central-1}"
     volumes:
       - ./pipeline/digital-twin-manager/input/config.json:/app/config.json:ro
       - ./pipeline/digital-twin-manager/input/config_hierarchy.json:/app/config_hierarchy.json:ro
