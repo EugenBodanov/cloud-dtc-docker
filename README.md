@@ -58,10 +58,10 @@ Save Enterprise Architect project files (`.qea`, `.qeax`, `.eap`, `.eapx`) under
 enterprise-architect/projects
 ```
 
-Save Enterprise Architect exports under:
+Save Enterprise Architect exports under this host directory:
 
 ```text
-enterprise-architect/output
+pipeline/enterprise-architect/output
 ```
 
 The run loop watches this directory. When a new export is created or an existing
@@ -69,10 +69,18 @@ export is updated, it prints the run configuration and asks whether to run the
 pipeline.
 
 Those files are stored on the host and survive container restarts. The existing
-input example can be opened or imported from:
+input example is stored on the host under:
 
 ```text
-C:\users\ea\Documents\enterprise-architect\input\model.xml
+pipeline/enterprise-architect/input/demo_model.xml
+```
+
+Inside Enterprise Architect, input and output are still available through the
+usual Wine file picker paths:
+
+```text
+C:\users\ea\Documents\enterprise-architect\input\demo_model.xml
+C:\users\ea\Documents\enterprise-architect\output
 ```
 
 ## Running The Pipeline
@@ -91,7 +99,7 @@ On startup it brings up:
 Then it watches:
 
 ```text
-enterprise-architect/output
+pipeline/enterprise-architect/output
 ```
 
 Type this into the running process to stop it:

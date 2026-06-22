@@ -11,11 +11,6 @@
 !scripts/**
 
 !enterprise-architect/
-!enterprise-architect/input/
-!enterprise-architect/input/demo_model.xml
-!enterprise-architect/output/
-!enterprise-architect/output/demo_export_1.xml
-!enterprise-architect/output/demo_export_1.sysml
 !enterprise-architect/projects/
 !enterprise-architect/projects/DemoProject.qea
 
@@ -23,6 +18,12 @@
 !demo-code/**
 
 !pipeline/
+!pipeline/enterprise-architect/
+!pipeline/enterprise-architect/input/
+!pipeline/enterprise-architect/input/demo_model.xml
+!pipeline/enterprise-architect/output/
+!pipeline/enterprise-architect/output/demo_export_1.xml
+!pipeline/enterprise-architect/output/demo_export_1.sysml
 !pipeline/fed-sysml/
 !pipeline/fed-sysml/input/
 pipeline/fed-sysml/input/*

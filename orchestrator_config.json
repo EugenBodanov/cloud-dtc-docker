@@ -17,7 +17,7 @@
   "auto_run": false,
   "remove_infrastructure_on_exit": true,
   "watch": {
-    "directory": "enterprise-architect/output",
+    "directory": "pipeline/enterprise-architect/output",
     "poll_interval_seconds": 2.0,
     "settle_seconds": 1.0
   }

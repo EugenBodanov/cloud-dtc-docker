@@ -81,7 +81,7 @@ def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineCon
         auto_run=_boolean(raw, "auto_run", False),
         remove_infrastructure_on_exit=_boolean(raw, "remove_infrastructure_on_exit", False),
         watch=WatchConfig(
-            directory=_path(watch_raw, "directory", "enterprise-architect/output"),
+            directory=_path(watch_raw, "directory", "pipeline/enterprise-architect/output"),
             poll_interval_seconds=_positive_float(watch_raw, "poll_interval_seconds", 2.0),
             settle_seconds=_positive_float(watch_raw, "settle_seconds", 1.0),
         ),

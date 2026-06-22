@@ -11,6 +11,8 @@ services:
     volumes:
       - enterprise-architect-wine:/home/ea/.wine
       - ./enterprise-architect:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect
+      - ./pipeline/enterprise-architect/input:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/input
+      - ./pipeline/enterprise-architect/output:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/output
     environment:
       SCREEN_RESOLUTION: "1600x900x24"
 
