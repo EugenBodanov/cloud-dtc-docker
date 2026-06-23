@@ -9,6 +9,7 @@ from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
 from .pipeline import (
     remove_cloud_deployer_test_simulator_stage,
+    run_digital_twin_manager_destroy_stage,
     run_cloud_deployer_test_simulator_stage,
     run_digital_twin_manager_stage,
     run_federation_stage,
@@ -50,6 +51,7 @@ def run_app(options: LaunchOptions) -> None:
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
         print("Type 'continue digital-twin-manager' to run digital-twin-manager using staged input.")
+        print("Type 'destroy digital-twin-manager' to destroy the deployed digital twin.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
         print("Type 'start simulator' to start cloud-deployer-test-simulator.")
         print("Type 'stop simulator' to stop and remove cloud-deployer-test-simulator.")
@@ -154,6 +156,16 @@ def _run_digital_twin_manager_safely(config: PipelineConfig) -> bool:
         return False
 
 
+def _run_digital_twin_manager_destroy_safely(config: PipelineConfig) -> bool:
+    try:
+        run_digital_twin_manager_destroy_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nDigital twin manager destroy failed with exit code {code}. Watching will continue.")
+        return False
+
+
 def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
     try:
         run_cloud_deployer_test_simulator_stage(config)
@@ -207,6 +219,13 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         if run_federation and manager_succeeded:
             _run_federation_safely(config)
         return
+    if _is_destroy_digital_twin_manager(value):
+        if not _prompt_yes_no(user_input, "Destroy deployed digital twin resources? [y/N] "):
+            print("Skipped digital-twin-manager destroy.")
+            return
+        print("Destroying deployed digital twin with digital-twin-manager.")
+        _run_digital_twin_manager_destroy_safely(config)
+        return
     if _is_start_cloud_deployer_test_simulator(value):
         print("Starting cloud-deployer-test-simulator.")
         _run_cloud_deployer_test_simulator_safely(config)
@@ -253,6 +272,22 @@ def _is_continue_digital_twin_manager(value: str) -> bool:
     )
 
 
+def _is_destroy_digital_twin_manager(value: str) -> bool:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    return tokens in (
+        ["destroy"],
+        ["destroy", "aws"],
+        ["destroy", "deploy"],
+        ["destroy", "deployment"],
+        ["destroy", "digital", "twin"],
+        ["destroy", "digital", "twin", "manager"],
+        ["digital", "twin", "destroy"],
+        ["digital", "twin", "manager", "destroy"],
+        ["destroy", "deployed", "digital", "twin"],
+        ["destroy", "deployed", "digital", "twin", "manager"],
+    )
+
+
 def _is_start_cloud_deployer_test_simulator(value: str) -> bool:
     tokens = value.replace("-", " ").replace("_", " ").split()
     return tokens in (
@@ -289,6 +324,7 @@ def _is_stop_cloud_deployer_test_simulator(value: str) -> bool:
 def _print_commands() -> None:
     print("Available commands:")
     print("- continue digital-twin-manager  Run digital-twin-manager using staged manager input.")
+    print("- destroy digital-twin-manager   Destroy the deployed digital twin using staged manager input.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
     print("- start simulator     Start cloud-deployer-test-simulator using staged manager input.")
     print("- stop simulator      Stop and remove cloud-deployer-test-simulator.")

@@ -6,6 +6,7 @@ from .config import PipelineConfig
 from .docker_compose import (
     remove_cloud_deployer_test_simulator,
     run_converter,
+    run_manager_destroy,
     run_manager_deploy,
     run_fed_sysml,
     start_cloud_deployer_test_simulator,
@@ -115,11 +116,7 @@ def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
 
-    if not has_config_set(MANAGER_INPUT_DIR):
-        fail(
-            "digital-twin-manager input is missing or incomplete. "
-            f"Run the pipeline first so configs are staged in {relative_to_repo(MANAGER_INPUT_DIR)}."
-        )
+    _require_manager_input()
 
     run_manager_deploy(
         compose_file=compose_file,
@@ -128,6 +125,29 @@ def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
         show_container_logs=config.show_container_logs,
     )
     print_manager_outputs()
+
+
+def run_digital_twin_manager_destroy_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    _require_manager_input()
+
+    run_manager_destroy(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+    )
+
+
+def _require_manager_input() -> None:
+    if not has_config_set(MANAGER_INPUT_DIR):
+        fail(
+            "digital-twin-manager input is missing or incomplete. "
+            f"Run the pipeline first so configs are staged in {relative_to_repo(MANAGER_INPUT_DIR)}."
+        )
 
 
 def run_cloud_deployer_test_simulator_stage(config: PipelineConfig) -> None:
