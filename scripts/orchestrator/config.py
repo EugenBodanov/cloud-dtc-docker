@@ -34,7 +34,7 @@ class PipelineConfig:
     show_container_logs: bool
     show_configs: bool
     show_output_configs: bool
-    deploy_to_aws: bool
+    deploy_to_aws: bool | None
     run_federation_workflow: bool
     auto_run: bool
     remove_infrastructure_on_exit: bool
@@ -48,6 +48,9 @@ class PipelineConfig:
 
     def with_run_federation_workflow(self, enabled: bool) -> PipelineConfig:
         return replace(self, run_federation_workflow=enabled)
+
+    def with_deploy_to_aws(self, enabled: bool) -> PipelineConfig:
+        return replace(self, deploy_to_aws=enabled)
 
 
 def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineConfig:
@@ -76,7 +79,7 @@ def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineCon
         show_container_logs=_boolean(raw, "show_container_logs", True),
         show_configs=_boolean(raw, "show_configs", False),
         show_output_configs=_boolean(raw, "show_output_configs", False),
-        deploy_to_aws=_boolean(raw, "deploy_to_aws", False),
+        deploy_to_aws=_optional_boolean(raw, "deploy_to_aws"),
         run_federation_workflow=_boolean(raw, "run_federation_workflow", False),
         auto_run=_boolean(raw, "auto_run", False),
         remove_infrastructure_on_exit=_boolean(raw, "remove_infrastructure_on_exit", False),
@@ -163,6 +166,17 @@ def _boolean(raw: dict[str, Any], field_name: str, default: bool) -> bool:
     value = raw.get(field_name, default)
     if not isinstance(value, bool):
         fail(f"Config field '{field_name}' must be true or false.")
+    return value
+
+
+def _optional_boolean(raw: dict[str, Any], field_name: str) -> bool | None:
+    if field_name not in raw:
+        return None
+    value = raw[field_name]
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        fail(f"Config field '{field_name}' must be true, false, or null.")
     return value
 
 

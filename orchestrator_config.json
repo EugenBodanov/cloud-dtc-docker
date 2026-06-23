@@ -1,7 +1,7 @@
 {
   "compose_file": "docker-compose.yaml",
   "compose_profiles": ["pipeline"],
-  "digital_twin_name": "dtwin",
+  "digital_twin_name": "dtc-y-03",
   "generated_twin_dir": null,
   "aws_credentials_file": null,
   "path_maps": [
@@ -12,7 +12,7 @@
   "show_container_logs": false,
   "show_configs": true,
   "show_output_configs": false,
-  "deploy_to_aws": false,
+  "deploy_to_aws": null,
   "run_federation_workflow": false,
   "auto_run": false,
   "remove_infrastructure_on_exit": true,

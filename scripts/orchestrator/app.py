@@ -99,7 +99,11 @@ def _handle_file_change(config: PipelineConfig, change: FileChange, user_input: 
 
     if config.auto_run:
         print("Auto-run accepted this change.")
-        _run_pipeline_safely(config, change.path, change.converter)
+        run_config = config
+        if config.deploy_to_aws is None:
+            print("AWS deploy is unset; auto-run will keep deploy disabled.")
+            run_config = config.with_deploy_to_aws(False)
+        _run_pipeline_safely(run_config, change.path, change.converter)
         return
 
     if not _prompt_yes_no(user_input, "Run pipeline for this export? [y/N] "):
@@ -107,10 +111,18 @@ def _handle_file_change(config: PipelineConfig, change: FileChange, user_input: 
         return
 
     run_config = config
-    if config.deploy_to_aws:
+    deploy_to_aws = config.deploy_to_aws
+    if deploy_to_aws is None:
+        deploy_to_aws = _prompt_yes_no(user_input, "Deploy to AWS for this export? [y/N] ")
+        run_config = run_config.with_deploy_to_aws(deploy_to_aws)
+        print(f"AWS deploy for this run: {'enabled' if deploy_to_aws else 'disabled'}.")
+
+    if deploy_to_aws:
         run_federation = _prompt_yes_no(user_input, "Run federation workflow for this export? [y/N] ")
-        run_config = config.with_run_federation_workflow(run_federation)
+        run_config = run_config.with_run_federation_workflow(run_federation)
         print(f"Federation workflow for this run: {'enabled' if run_federation else 'disabled'}.")
+    elif config.deploy_to_aws is None:
+        run_config = run_config.with_run_federation_workflow(False)
     _run_pipeline_safely(run_config, change.path, change.converter)
 
 

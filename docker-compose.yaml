@@ -41,7 +41,7 @@ services:
       - ./pipeline/fed-sysml/input:/pipeline/input
       - ./pipeline/fed-sysml/output:/pipeline/output
       - type: bind
-        source: ${PIPELINE_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        source: ${FED_SYSML_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
         target: /pipeline/code
         read_only: true
 

@@ -30,4 +30,6 @@ pipeline/fed-sysml/input/*
 !pipeline/fed-sysml/input/brokerConfig.example.json
 !pipeline/fed-sysml/input/fedtwin.example.json
 
+!.env.example
+
 **/__pycache__/

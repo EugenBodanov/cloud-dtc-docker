@@ -216,4 +216,6 @@ config_events.json
 ```
 
 AWS deploy is controlled by `deploy_to_aws`. Leave it `false` during safe demos
-unless AWS credentials and deploy intent are confirmed.
+unless AWS credentials and deploy intent are confirmed. Set it to `null` or omit
+it to ask for AWS deploy confirmation during interactive runs; auto-run keeps
+deploy disabled when the setting is unset.
