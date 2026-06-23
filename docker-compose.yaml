@@ -98,7 +98,6 @@ services:
       - type: bind
         source: ${PIPELINE_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
-        read_only: true
   cloud-deployer-test-simulator:
     image: evbodanov/cloud-deployer-test-simulator:v1
     container_name: cloud-deployer-test-simulator
