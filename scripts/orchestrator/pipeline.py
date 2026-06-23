@@ -9,10 +9,16 @@ from .docker_compose import (
     run_manager_destroy,
     run_manager_deploy,
     run_fed_sysml,
+    run_fed_sysml_terraform_apply_plan,
+    run_fed_sysml_terraform_destroy,
+    run_fed_sysml_terraform_init,
+    run_fed_sysml_terraform_plan,
     start_cloud_deployer_test_simulator,
 )
 from .pipeline_paths import (
     FEDERATION_OUTPUT_DIR,
+    FEDERATION_TERRAFORM_MAIN_FILE,
+    FEDERATION_TERRAFORM_PLAN_PATH,
     MANAGER_INPUT_DIR,
     MANAGER_OUTPUT_DIR,
     SIMULATOR_CONFIG_FILES,
@@ -202,4 +208,104 @@ def run_federation_stage(config: PipelineConfig) -> None:
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
+
+    if config.fed_sysml_terraform_action != "none":
+        run_fed_sysml_terraform_stage(config)
+
     print_file_listing("fed-sysml output", sorted(FEDERATION_OUTPUT_DIR.glob("*")))
+
+
+def run_fed_sysml_terraform_stage(
+    config: PipelineConfig,
+    *,
+    action: str | None = None,
+    auto_approve: bool | None = None,
+) -> None:
+    action = action or config.fed_sysml_terraform_action
+    if action == "none":
+        return
+    if action not in ("plan", "apply", "destroy"):
+        fail(f"Unknown fed-sysml Terraform action: {action}")
+
+    effective_auto_approve = config.fed_sysml_terraform_auto_approve if auto_approve is None else auto_approve
+    if action in ("apply", "destroy") and not effective_auto_approve:
+        fail(
+            f"fed-sysml Terraform action '{action}' requires "
+            "fed_sysml_terraform_auto_approve=true or manual watcher confirmation."
+        )
+
+    if action == "plan":
+        run_fed_sysml_terraform_plan_stage(config, save_plan=False)
+        return
+
+    if action == "apply":
+        run_fed_sysml_terraform_plan_stage(config, save_plan=True)
+        run_fed_sysml_terraform_apply_saved_plan_stage(config)
+        return
+
+    compose_file = _require_fed_sysml_terraform_ready(config)
+    print("\nRunning fed-sysml Terraform destroy")
+    run_fed_sysml_terraform_destroy(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=True,
+        auto_approve=effective_auto_approve,
+    )
+
+
+def run_fed_sysml_terraform_plan_stage(config: PipelineConfig, *, save_plan: bool) -> None:
+    compose_file = _require_fed_sysml_terraform_ready(config)
+    print("\nRunning fed-sysml Terraform plan")
+    run_fed_sysml_terraform_init(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=True,
+    )
+    _remove_stale_fed_sysml_plan()
+    run_fed_sysml_terraform_plan(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=True,
+        save_plan=save_plan,
+    )
+
+
+def run_fed_sysml_terraform_apply_saved_plan_stage(config: PipelineConfig) -> None:
+    compose_file = _require_fed_sysml_terraform_ready(config)
+    if not FEDERATION_TERRAFORM_PLAN_PATH.is_file():
+        fail(
+            "fed-sysml Terraform saved plan is missing. "
+            f"Expected {relative_to_repo(FEDERATION_TERRAFORM_PLAN_PATH)}."
+        )
+
+    print("\nApplying saved fed-sysml Terraform plan")
+    run_fed_sysml_terraform_apply_plan(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=True,
+    )
+
+
+def _require_fed_sysml_terraform_ready(config: PipelineConfig) -> Path:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+    if not FEDERATION_TERRAFORM_MAIN_FILE.is_file():
+        fail(
+            "fed-sysml Terraform output is missing. "
+            f"Expected {relative_to_repo(FEDERATION_TERRAFORM_MAIN_FILE)}. "
+            "Run 'continue fed-sysml' first."
+        )
+    return compose_file
+
+
+def _remove_stale_fed_sysml_plan() -> None:
+    if FEDERATION_TERRAFORM_PLAN_PATH.exists():
+        if FEDERATION_TERRAFORM_PLAN_PATH.is_dir():
+            fail(f"Expected Terraform plan file but found directory: {relative_to_repo(FEDERATION_TERRAFORM_PLAN_PATH)}")
+        FEDERATION_TERRAFORM_PLAN_PATH.unlink()
+        print(f"Removed stale Terraform plan: {relative_to_repo(FEDERATION_TERRAFORM_PLAN_PATH)}")

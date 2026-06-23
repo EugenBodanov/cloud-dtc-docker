@@ -12,6 +12,9 @@ from .pipeline import (
     run_digital_twin_manager_destroy_stage,
     run_cloud_deployer_test_simulator_stage,
     run_digital_twin_manager_stage,
+    run_fed_sysml_terraform_apply_saved_plan_stage,
+    run_fed_sysml_terraform_plan_stage,
+    run_fed_sysml_terraform_stage,
     run_federation_stage,
     run_pipeline,
 )
@@ -53,6 +56,9 @@ def run_app(options: LaunchOptions) -> None:
         print("Type 'continue digital-twin-manager' to run digital-twin-manager using staged input.")
         print("Type 'destroy digital-twin-manager' to destroy the deployed digital twin.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
+        print("Type 'fed terraform plan' to plan the generated fed-sysml Terraform output.")
+        print("Type 'fed terraform apply' to apply the generated fed-sysml Terraform output.")
+        print("Type 'fed terraform destroy' to destroy the fed-sysml Terraform resources.")
         print("Type 'start simulator' to start cloud-deployer-test-simulator.")
         print("Type 'stop simulator' to stop and remove cloud-deployer-test-simulator.")
         print("Type 'exit' and press Enter to stop.")
@@ -166,6 +172,36 @@ def _run_digital_twin_manager_destroy_safely(config: PipelineConfig) -> bool:
         return False
 
 
+def _run_fed_sysml_terraform_safely(config: PipelineConfig, action: str, *, auto_approve: bool) -> bool:
+    try:
+        run_fed_sysml_terraform_stage(config, action=action, auto_approve=auto_approve)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nfed-sysml Terraform {action} failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _run_fed_sysml_terraform_plan_safely(config: PipelineConfig, *, save_plan: bool) -> bool:
+    try:
+        run_fed_sysml_terraform_plan_stage(config, save_plan=save_plan)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nfed-sysml Terraform plan failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _run_fed_sysml_terraform_apply_saved_plan_safely(config: PipelineConfig) -> bool:
+    try:
+        run_fed_sysml_terraform_apply_saved_plan_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nfed-sysml Terraform apply failed with exit code {code}. Watching will continue.")
+        return False
+
+
 def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
     try:
         run_cloud_deployer_test_simulator_stage(config)
@@ -208,6 +244,28 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         return
     if _is_exit(value):
         raise StopRequested
+    fed_terraform_action = _fed_sysml_terraform_action(value)
+    if fed_terraform_action:
+        if fed_terraform_action == "plan":
+            print("Planning fed-sysml Terraform output.")
+            _run_fed_sysml_terraform_safely(config, fed_terraform_action, auto_approve=False)
+            return
+        if fed_terraform_action == "apply":
+            print("Planning fed-sysml Terraform output for apply.")
+            if not _run_fed_sysml_terraform_plan_safely(config, save_plan=True):
+                return
+            if not _prompt_yes_no(user_input, "Apply this fed-sysml Terraform plan? [y/N] "):
+                print("Skipped fed-sysml Terraform apply.")
+                return
+            print("Applying saved fed-sysml Terraform plan.")
+            _run_fed_sysml_terraform_apply_saved_plan_safely(config)
+            return
+        if not _prompt_yes_no(user_input, "Destroy fed-sysml Terraform resources? [y/N] "):
+            print("Skipped fed-sysml Terraform destroy.")
+            return
+        print("Destroying fed-sysml Terraform resources.")
+        _run_fed_sysml_terraform_safely(config, fed_terraform_action, auto_approve=True)
+        return
     if _is_continue_fed_sysml(value):
         print("Continuing from fed-sysml.")
         _run_federation_safely(config)
@@ -255,6 +313,31 @@ def _is_continue_fed_sysml(value: str) -> bool:
         ["continue", "federation"],
         ["continue", "with", "federation"],
     )
+
+
+def _fed_sysml_terraform_action(value: str) -> str | None:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    aliases = {
+        "plan": (
+            ["fed", "terraform", "plan"],
+            ["fed", "sysml", "terraform", "plan"],
+            ["federation", "terraform", "plan"],
+        ),
+        "apply": (
+            ["fed", "terraform", "apply"],
+            ["fed", "sysml", "terraform", "apply"],
+            ["federation", "terraform", "apply"],
+        ),
+        "destroy": (
+            ["fed", "terraform", "destroy"],
+            ["fed", "sysml", "terraform", "destroy"],
+            ["federation", "terraform", "destroy"],
+        ),
+    }
+    for action, candidates in aliases.items():
+        if tokens in candidates:
+            return action
+    return None
 
 
 def _is_continue_digital_twin_manager(value: str) -> bool:
@@ -326,6 +409,9 @@ def _print_commands() -> None:
     print("- continue digital-twin-manager  Run digital-twin-manager using staged manager input.")
     print("- destroy digital-twin-manager   Destroy the deployed digital twin using staged manager input.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
+    print("- fed terraform plan  Run Terraform init and plan for generated fed-sysml output.")
+    print("- fed terraform apply  Run Terraform init, plan, and apply for generated fed-sysml output.")
+    print("- fed terraform destroy  Destroy fed-sysml Terraform resources.")
     print("- start simulator     Start cloud-deployer-test-simulator using staged manager input.")
     print("- stop simulator      Stop and remove cloud-deployer-test-simulator.")
     print("- exit                Stop the watcher.")

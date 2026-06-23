@@ -13,6 +13,8 @@ from .pipeline_paths import (
     resolve_repo_path,
 )
 
+FED_SYSML_TERRAFORM_ACTIONS = ("none", "plan", "apply", "destroy")
+
 
 @dataclass(frozen=True)
 class WatchConfig:
@@ -36,6 +38,8 @@ class PipelineConfig:
     show_output_configs: bool
     deploy_to_aws: bool | None
     run_federation_workflow: bool
+    fed_sysml_terraform_action: str
+    fed_sysml_terraform_auto_approve: bool
     auto_run: bool
     remove_infrastructure_on_exit: bool
     watch: WatchConfig
@@ -81,6 +85,13 @@ def load_pipeline_config(config_file: Path = DEFAULT_CONFIG_FILE) -> PipelineCon
         show_output_configs=_boolean(raw, "show_output_configs", False),
         deploy_to_aws=_optional_boolean(raw, "deploy_to_aws"),
         run_federation_workflow=_boolean(raw, "run_federation_workflow", False),
+        fed_sysml_terraform_action=_choice(
+            raw,
+            "fed_sysml_terraform_action",
+            "none",
+            FED_SYSML_TERRAFORM_ACTIONS,
+        ),
+        fed_sysml_terraform_auto_approve=_boolean(raw, "fed_sysml_terraform_auto_approve", False),
         auto_run=_boolean(raw, "auto_run", False),
         remove_infrastructure_on_exit=_boolean(raw, "remove_infrastructure_on_exit", False),
         watch=WatchConfig(
@@ -108,6 +119,8 @@ def run_config_snapshot(config: PipelineConfig, *, source: Path, converter: str)
         "show_output_configs": config.show_output_configs,
         "deploy_to_aws": config.deploy_to_aws,
         "run_federation_workflow": config.run_federation_workflow,
+        "fed_sysml_terraform_action": config.fed_sysml_terraform_action,
+        "fed_sysml_terraform_auto_approve": config.fed_sysml_terraform_auto_approve,
         "auto_run": config.auto_run,
         "remove_infrastructure_on_exit": config.remove_infrastructure_on_exit,
     }
@@ -166,6 +179,14 @@ def _boolean(raw: dict[str, Any], field_name: str, default: bool) -> bool:
     value = raw.get(field_name, default)
     if not isinstance(value, bool):
         fail(f"Config field '{field_name}' must be true or false.")
+    return value
+
+
+def _choice(raw: dict[str, Any], field_name: str, default: str, choices: tuple[str, ...]) -> str:
+    value = _string(raw, field_name, default)
+    if value not in choices:
+        options = ", ".join(choices)
+        fail(f"Config field '{field_name}' must be one of: {options}.")
     return value
 
 

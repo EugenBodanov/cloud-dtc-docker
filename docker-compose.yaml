@@ -37,6 +37,12 @@ services:
       - pipeline
     image: evbodanov/fed-sysml:v1
     container_name: fed-sysml
+    environment:
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-}"
+      TF_IN_AUTOMATION: "${TF_IN_AUTOMATION:-true}"
     volumes:
       - ./pipeline/fed-sysml/input:/pipeline/input
       - ./pipeline/fed-sysml/output:/pipeline/output

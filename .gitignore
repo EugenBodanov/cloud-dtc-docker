@@ -16,6 +16,7 @@
 
 !demo-code/
 !demo-code/**
+demo-code/microgrid/stopCharging/zipped.zip
 
 !pipeline/
 !pipeline/enterprise-architect/

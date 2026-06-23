@@ -20,6 +20,13 @@ from .pipeline_paths import (
 )
 from .xmi_validation import validate_sysml_v1_export
 
+FEDERATION_TERRAFORM_STATE_ENTRIES = {
+    ".terraform",
+    ".terraform.lock.hcl",
+    "terraform.tfstate",
+    "terraform.tfstate.backup",
+}
+
 
 def clean_pipeline_dir(path: Path) -> None:
     path = _safe_pipeline_child(path)
@@ -96,11 +103,26 @@ def prepare_federation_stage(*, clean_stage: bool) -> None:
     if clean_stage:
         ensure_dir(FEDERATION_INPUT_DIR)
         clean_pipeline_dir(strategy_input_dir)
-        clean_pipeline_dir(FEDERATION_OUTPUT_DIR)
+        clean_federation_output_dir()
     else:
         ensure_dir(FEDERATION_INPUT_DIR)
         ensure_dir(strategy_input_dir)
         ensure_dir(FEDERATION_OUTPUT_DIR)
+
+
+def clean_federation_output_dir() -> None:
+    path = _safe_pipeline_child(FEDERATION_OUTPUT_DIR)
+    if path.exists() and not path.is_dir():
+        fail(f"Expected directory but found file: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+
+    for child in path.iterdir():
+        if child.name in FEDERATION_TERRAFORM_STATE_ENTRIES:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
 
 def read_existing_manager_credentials() -> bytes | None:

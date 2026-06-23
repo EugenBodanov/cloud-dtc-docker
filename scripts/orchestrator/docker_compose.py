@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .command_runner import run_command
 from .errors import fail
-from .pipeline_paths import PROFILE_SERVICES, relative_to_repo
+from .pipeline_paths import FEDERATION_TERRAFORM_PLAN_FILE, PROFILE_SERVICES, relative_to_repo
 
 INFRASTRUCTURE_SERVICES = ("enterprise-architect", "sysml-kernel")
 
@@ -124,6 +124,99 @@ def run_fed_sysml(
     if build_images:
         command.append("--build")
     command.append("fed-sysml")
+    run_command(command, show_output=show_container_logs)
+
+
+def run_fed_sysml_terraform_init(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    run_fed_sysml_terraform(
+        ["init", "-input=false"],
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_fed_sysml_terraform_plan(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+    save_plan: bool,
+) -> None:
+    args = ["plan", "-input=false"]
+    if save_plan:
+        args.append(f"-out={FEDERATION_TERRAFORM_PLAN_FILE}")
+    run_fed_sysml_terraform(
+        args,
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_fed_sysml_terraform_apply_plan(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    run_fed_sysml_terraform(
+        ["apply", "-input=false", FEDERATION_TERRAFORM_PLAN_FILE],
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_fed_sysml_terraform_destroy(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+    auto_approve: bool,
+) -> None:
+    args = ["destroy", "-input=false"]
+    if auto_approve:
+        args.append("-auto-approve")
+    run_fed_sysml_terraform(
+        args,
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_fed_sysml_terraform(
+    terraform_args: list[str],
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    command = compose_command(compose_file, profiles) + [
+        "run",
+        "--rm",
+        "-T",
+        "--entrypoint",
+        "terraform",
+    ]
+    if build_images:
+        command.append("--build")
+    command.extend(["fed-sysml", "-chdir=/pipeline/output", *terraform_args])
     run_command(command, show_output=show_container_logs)
 
 

@@ -14,6 +14,8 @@
   "show_output_configs": false,
   "deploy_to_aws": null,
   "run_federation_workflow": false,
+  "fed_sysml_terraform_action": "none",
+  "fed_sysml_terraform_auto_approve": false,
   "auto_run": false,
   "remove_infrastructure_on_exit": true,
   "watch": {
