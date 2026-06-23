@@ -14,6 +14,12 @@ CONFIG_FILES = (
     "config_events.json",
 )
 
+SIMULATOR_CONFIG_FILES = (
+    "config.json",
+    "config_hierarchy.json",
+    "config_iot_devices.json",
+)
+
 PROFILE_SERVICES = {
     "v1": "digital-twin-profile-sysml-v1",
     "v2": "digital-twin-profile-sysml-v2",

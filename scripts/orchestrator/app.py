@@ -7,7 +7,13 @@ from .cli import LaunchOptions
 from .config import PipelineConfig, load_pipeline_config, print_run_config
 from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
-from .pipeline import run_digital_twin_manager_stage, run_federation_stage, run_pipeline
+from .pipeline import (
+    remove_cloud_deployer_test_simulator_stage,
+    run_cloud_deployer_test_simulator_stage,
+    run_digital_twin_manager_stage,
+    run_federation_stage,
+    run_pipeline,
+)
 from .pipeline_paths import relative_to_repo, resolve_repo_path
 from .user_input import UserInput
 
@@ -45,6 +51,8 @@ def run_app(options: LaunchOptions) -> None:
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
         print("Type 'continue digital-twin-manager' to run digital-twin-manager using staged input.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
+        print("Type 'start simulator' to start cloud-deployer-test-simulator.")
+        print("Type 'stop simulator' to stop and remove cloud-deployer-test-simulator.")
         print("Type 'exit' and press Enter to stop.")
         if config.auto_run:
             print("Auto-run is enabled.")
@@ -57,6 +65,7 @@ def run_app(options: LaunchOptions) -> None:
     except KeyboardInterrupt:
         print("\nStopping run loop.")
     finally:
+        _remove_cloud_deployer_test_simulator_safely(config)
         if config.remove_infrastructure_on_exit:
             remove_infrastructure(
                 compose_file=compose_file,
@@ -64,7 +73,7 @@ def run_app(options: LaunchOptions) -> None:
                 show_container_logs=config.show_container_logs,
             )
         else:
-            print("Docker services remain running.")
+            print("Infrastructure Docker services remain running.")
 
 
 def _watch_forever(config: PipelineConfig, watcher: OutputFileWatcher, user_input: UserInput) -> None:
@@ -133,6 +142,26 @@ def _run_digital_twin_manager_safely(config: PipelineConfig) -> bool:
         return False
 
 
+def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
+    try:
+        run_cloud_deployer_test_simulator_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\ncloud-deployer-test-simulator failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _remove_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
+    try:
+        remove_cloud_deployer_test_simulator_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\ncloud-deployer-test-simulator cleanup failed with exit code {code}.")
+        return False
+
+
 def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
     print(prompt, end="", flush=True)
     while True:
@@ -166,6 +195,14 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         if run_federation and manager_succeeded:
             _run_federation_safely(config)
         return
+    if _is_start_cloud_deployer_test_simulator(value):
+        print("Starting cloud-deployer-test-simulator.")
+        _run_cloud_deployer_test_simulator_safely(config)
+        return
+    if _is_stop_cloud_deployer_test_simulator(value):
+        print("Stopping cloud-deployer-test-simulator.")
+        _remove_cloud_deployer_test_simulator_safely(config)
+        return
 
     if value in ("help", "?"):
         _print_commands()
@@ -188,6 +225,7 @@ def _is_continue_fed_sysml(value: str) -> bool:
         ["continue", "with", "federation"],
     )
 
+
 def _is_continue_digital_twin_manager(value: str) -> bool:
     tokens = value.replace("-", " ").replace("_", " ").split()
     return tokens in (
@@ -203,10 +241,45 @@ def _is_continue_digital_twin_manager(value: str) -> bool:
     )
 
 
+def _is_start_cloud_deployer_test_simulator(value: str) -> bool:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    return tokens in (
+        ["simulator"],
+        ["test", "simulator"],
+        ["cloud", "deployer", "test", "simulator"],
+        ["cloud", "deployer", "simulator"],
+        ["start", "simulator"],
+        ["start", "test", "simulator"],
+        ["start", "cloud", "deployer", "test", "simulator"],
+        ["run", "simulator"],
+        ["run", "test", "simulator"],
+        ["run", "cloud", "deployer", "test", "simulator"],
+        ["continue", "simulator"],
+        ["continue", "test", "simulator"],
+        ["continue", "cloud", "deployer", "test", "simulator"],
+    )
+
+
+def _is_stop_cloud_deployer_test_simulator(value: str) -> bool:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    return tokens in (
+        ["stop", "simulator"],
+        ["stop", "test", "simulator"],
+        ["stop", "cloud", "deployer", "test", "simulator"],
+        ["stop", "cloud", "deployer", "simulator"],
+        ["remove", "simulator"],
+        ["remove", "test", "simulator"],
+        ["remove", "cloud", "deployer", "test", "simulator"],
+        ["remove", "cloud", "deployer", "simulator"],
+    )
+
+
 def _print_commands() -> None:
     print("Available commands:")
     print("- continue digital-twin-manager  Run digital-twin-manager using staged manager input.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
+    print("- start simulator     Start cloud-deployer-test-simulator using staged manager input.")
+    print("- stop simulator      Stop and remove cloud-deployer-test-simulator.")
     print("- exit                Stop the watcher.")
 
 

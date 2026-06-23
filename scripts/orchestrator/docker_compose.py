@@ -16,6 +16,10 @@ def compose_command(compose_file: Path, profiles: tuple[str, ...] = ()) -> list[
     return command
 
 
+def with_profiles(profiles: tuple[str, ...], *extra_profiles: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*profiles, *extra_profiles)))
+
+
 def start_infrastructure(
     *,
     compose_file: Path,
@@ -106,4 +110,36 @@ def run_fed_sysml(
     if build_images:
         command.append("--build")
     command.append("fed-sysml")
+    run_command(command, show_output=show_container_logs)
+
+
+def start_cloud_deployer_test_simulator(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    command = compose_command(compose_file, with_profiles(profiles, "simulator")) + ["up", "-d"]
+    if build_images:
+        command.append("--build")
+    command.append("cloud-deployer-test-simulator")
+    run_command(command, show_output=show_container_logs)
+
+
+def remove_cloud_deployer_test_simulator(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    show_container_logs: bool,
+) -> None:
+    print("\nRemoving cloud-deployer-test-simulator container:")
+    print("- cloud-deployer-test-simulator")
+
+    command = compose_command(compose_file, with_profiles(profiles, "simulator")) + [
+        "rm",
+        "--force",
+        "--stop",
+        "cloud-deployer-test-simulator",
+    ]
     run_command(command, show_output=show_container_logs)

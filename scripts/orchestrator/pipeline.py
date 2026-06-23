@@ -3,11 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from .config import PipelineConfig
-from .docker_compose import run_converter, run_manager_deploy, run_fed_sysml
+from .docker_compose import (
+    remove_cloud_deployer_test_simulator,
+    run_converter,
+    run_manager_deploy,
+    run_fed_sysml,
+    start_cloud_deployer_test_simulator,
+)
 from .pipeline_paths import (
     FEDERATION_OUTPUT_DIR,
     MANAGER_INPUT_DIR,
     MANAGER_OUTPUT_DIR,
+    SIMULATOR_CONFIG_FILES,
     converter_label,
     relative_to_repo,
     resolve_repo_path,
@@ -121,6 +128,43 @@ def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
         show_container_logs=config.show_container_logs,
     )
     print_manager_outputs()
+
+
+def run_cloud_deployer_test_simulator_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    simulator_inputs = [MANAGER_INPUT_DIR / file_name for file_name in SIMULATOR_CONFIG_FILES]
+    missing_inputs = [path for path in simulator_inputs if not path.is_file()]
+    if missing_inputs:
+        missing = ", ".join(relative_to_repo(path) for path in missing_inputs)
+        fail(
+            "cloud-deployer-test-simulator input is missing or incomplete. "
+            f"Run the pipeline first so configs are staged in {relative_to_repo(MANAGER_INPUT_DIR)}. "
+            f"Missing: {missing}"
+        )
+
+    print_file_listing("cloud-deployer-test-simulator input", simulator_inputs)
+    start_cloud_deployer_test_simulator(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+    )
+    print("\ncloud-deployer-test-simulator is running at http://127.0.0.1:5000")
+
+
+def remove_cloud_deployer_test_simulator_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    remove_cloud_deployer_test_simulator(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        show_container_logs=config.show_container_logs,
+    )
 
 
 def run_federation_stage(config: PipelineConfig) -> None:
