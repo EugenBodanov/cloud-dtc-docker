@@ -7,7 +7,7 @@ from .cli import LaunchOptions
 from .config import PipelineConfig, load_pipeline_config, print_run_config
 from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
-from .pipeline import run_federation_stage, run_pipeline
+from .pipeline import run_digital_twin_manager_stage, run_federation_stage, run_pipeline
 from .pipeline_paths import relative_to_repo, resolve_repo_path
 from .user_input import UserInput
 
@@ -43,6 +43,7 @@ def run_app(options: LaunchOptions) -> None:
         user_input.start()
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
+        print("Type 'continue digital-twin-manager' to run digital-twin-manager using staged input.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
         print("Type 'exit' and press Enter to stop.")
         if config.auto_run:
@@ -70,7 +71,7 @@ def _watch_forever(config: PipelineConfig, watcher: OutputFileWatcher, user_inpu
     while True:
         command = user_input.get_line(timeout=config.watch.poll_interval_seconds)
         if command is not None:
-            _handle_command(config, command)
+            _handle_command(config, command, user_input)
 
         for change in watcher.poll():
             _handle_file_change(config, change, user_input)
@@ -112,12 +113,24 @@ def _run_pipeline_safely(config: PipelineConfig, source: Path, converter: str) -
         print(f"\nPipeline failed with exit code {code}. Watching will continue.")
 
 
-def _run_federation_safely(config: PipelineConfig) -> None:
+def _run_federation_safely(config: PipelineConfig) -> bool:
     try:
         run_federation_stage(config)
+        return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
         print(f"\nFederation step failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _run_digital_twin_manager_safely(config: PipelineConfig) -> bool:
+    try:
+        run_digital_twin_manager_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nDigital twin manager step failed with exit code {code}. Watching will continue.")
+        return False
 
 
 def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
@@ -136,7 +149,7 @@ def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
         print("Please answer 'y', 'n', or 'exit': ", end="", flush=True)
 
 
-def _handle_command(config: PipelineConfig, command: str) -> None:
+def _handle_command(config: PipelineConfig, command: str, user_input: UserInput) -> None:
     value = command.strip().lower()
     if not value:
         return
@@ -146,6 +159,14 @@ def _handle_command(config: PipelineConfig, command: str) -> None:
         print("Continuing from fed-sysml.")
         _run_federation_safely(config)
         return
+    if _is_continue_digital_twin_manager(value):
+        run_federation = _prompt_yes_no(user_input, "Run federation workflow after digital twin manager? [y/N] ")
+        print("Continuing from digital-twin-manager.")
+        manager_succeeded = _run_digital_twin_manager_safely(config)
+        if run_federation and manager_succeeded:
+            _run_federation_safely(config)
+        return
+
     if value in ("help", "?"):
         _print_commands()
         return
@@ -167,9 +188,24 @@ def _is_continue_fed_sysml(value: str) -> bool:
         ["continue", "with", "federation"],
     )
 
+def _is_continue_digital_twin_manager(value: str) -> bool:
+    tokens = value.replace("-", " ").replace("_", " ").split()
+    return tokens in (
+        ["digital", "twin"],
+        ["digital", "twin", "manager"],
+        ["deploy", "to", "aws"],
+        ["continue", "digital", "twin"],
+        ["continue", "digital", "twin", "manager"],
+        ["continue", "with", "digital", "twin"],
+        ["continue", "with", "digital", "twin", "manager"],
+        ["continue", "deploy", "to", "aws"],
+        ["continue", "with", "deploy", "to", "aws"],
+    )
+
 
 def _print_commands() -> None:
     print("Available commands:")
+    print("- continue digital-twin-manager  Run digital-twin-manager using staged manager input.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
     print("- exit                Stop the watcher.")
 

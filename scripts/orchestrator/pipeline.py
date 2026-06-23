@@ -16,6 +16,7 @@ from .errors import fail
 from .staging import (
     copy_configs_to_manager,
     find_converter_output,
+    has_config_set,
     prepare_manager_stage,
     prepare_federation_stage,
     print_file_listing,
@@ -72,6 +73,22 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
     if config.show_output_configs:
         print_config_set("converter output", converter_output)
 
+    stage_digital_twin_manager_input(config, converter_output)
+
+    if not config.deploy_to_aws:
+        print("\nStopped before AWS deploy. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
+        return
+
+    run_digital_twin_manager_stage(config)
+
+    if not config.run_federation_workflow:
+        print("\nStopped before federation workflow. Manager output is ready in " + relative_to_repo(MANAGER_OUTPUT_DIR))
+        return
+
+    run_federation_stage(config)
+
+
+def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: Path) -> None:
     saved_credentials = None
     if not config.aws_credentials_file:
         saved_credentials = read_existing_manager_credentials()
@@ -85,9 +102,17 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
     if config.show_configs:
         print_config_set("digital-twin-manager input", MANAGER_INPUT_DIR)
 
-    if not config.deploy_to_aws:
-        print("\nStopped before AWS deploy. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
-        return
+
+def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    if not has_config_set(MANAGER_INPUT_DIR):
+        fail(
+            "digital-twin-manager input is missing or incomplete. "
+            f"Run the pipeline first so configs are staged in {relative_to_repo(MANAGER_INPUT_DIR)}."
+        )
 
     run_manager_deploy(
         compose_file=compose_file,
@@ -96,12 +121,6 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
         show_container_logs=config.show_container_logs,
     )
     print_manager_outputs()
-
-    if not config.run_federation_workflow:
-        print("\nStopped before federation workflow. Manager output is ready in " + relative_to_repo(MANAGER_OUTPUT_DIR))
-        return
-
-    run_federation_stage(config)
 
 
 def run_federation_stage(config: PipelineConfig) -> None:
