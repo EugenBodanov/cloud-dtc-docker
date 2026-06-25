@@ -12,6 +12,8 @@ from .pipeline import (
     remove_cloud_deployer_test_simulator_stage,
     run_digital_twin_manager_destroy_stage,
     start_cloud_deployer_test_simulator_stage,
+    start_local_grafana_stage,
+    stop_local_grafana_stage,
     run_digital_twin_manager_stage,
     run_fed_sysml_terraform_apply_saved_plan_stage,
     run_fed_sysml_terraform_plan_stage,
@@ -80,6 +82,17 @@ STOP_SIMULATOR_ALIASES = (
     ["remove", "cloud", "deployer", "simulator"],
 )
 
+START_GRAFANA_ALIASES = (
+    ["grafana"],
+    ["start", "grafana"],
+    ["run", "grafana"],
+)
+
+STOP_GRAFANA_ALIASES = (
+    ["stop", "grafana"],
+    ["remove", "grafana"],
+)
+
 
 def run_app(options: LaunchOptions) -> None:
     config = load_pipeline_config(options.config_file)
@@ -116,6 +129,8 @@ def run_app(options: LaunchOptions) -> None:
         print("Type 'fed terraform destroy' to destroy the fed-sysml Terraform resources.")
         print("Type 'start simulator [name]' to start cloud-deployer-test-simulator for a saved digital twin.")
         print("Type 'stop simulator [name]' to stop and remove a running cloud-deployer-test-simulator.")
+        print("Type 'start grafana' to start local Grafana.")
+        print("Type 'stop grafana' to stop and remove local Grafana.")
         print("Type 'exit' and press Enter to stop.")
         if config.auto_run:
             print("Auto-run is enabled.")
@@ -277,6 +292,26 @@ def _remove_cloud_deployer_test_simulator_safely(config: PipelineConfig, deploym
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
         print(f"\ncloud-deployer-test-simulator cleanup failed with exit code {code}.")
+        return False
+
+
+def _run_local_grafana_safely(config: PipelineConfig) -> bool:
+    try:
+        start_local_grafana_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nLocal Grafana failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _stop_local_grafana_safely(config: PipelineConfig) -> bool:
+    try:
+        stop_local_grafana_stage(config)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\nLocal Grafana cleanup failed with exit code {code}. Watching will continue.")
         return False
 
 
@@ -473,6 +508,22 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         print(f"Stopping cloud-deployer-test-simulator for deployment: {deployment_name}")
         _remove_cloud_deployer_test_simulator_safely(config, deployment_name)
         return
+    is_start_grafana, requested_target = _grafana_command_target(command_text, START_GRAFANA_ALIASES)
+    if is_start_grafana:
+        if requested_target:
+            print("Local Grafana is shared and does not take a digital twin target. Use 'start grafana'.")
+            return
+        print("Starting local Grafana.")
+        _run_local_grafana_safely(config)
+        return
+    is_stop_grafana, requested_target = _grafana_command_target(command_text, STOP_GRAFANA_ALIASES)
+    if is_stop_grafana:
+        if requested_target:
+            print("Local Grafana is shared and does not take a digital twin target. Use 'stop grafana'.")
+            return
+        print("Stopping local Grafana.")
+        _stop_local_grafana_safely(config)
+        return
 
     if value in ("help", "?"):
         _print_commands()
@@ -488,6 +539,13 @@ def _digital_twin_manager_command_target(
 
 
 def _simulator_command_target(
+    command: str,
+    aliases: tuple[list[str], ...],
+) -> tuple[bool, str | None]:
+    return _command_target(command, aliases)
+
+
+def _grafana_command_target(
     command: str,
     aliases: tuple[list[str], ...],
 ) -> tuple[bool, str | None]:
@@ -580,6 +638,16 @@ def _is_stop_cloud_deployer_test_simulator(value: str) -> bool:
     return matched
 
 
+def _is_start_local_grafana(value: str) -> bool:
+    matched, target = _grafana_command_target(value, START_GRAFANA_ALIASES)
+    return matched and target is None
+
+
+def _is_stop_local_grafana(value: str) -> bool:
+    matched, target = _grafana_command_target(value, STOP_GRAFANA_ALIASES)
+    return matched and target is None
+
+
 def _print_commands() -> None:
     print("Available commands:")
     print("- continue digital-twin-manager [name]  Deploy a saved digital-twin-manager input.")
@@ -590,6 +658,8 @@ def _print_commands() -> None:
     print("- fed terraform destroy  Destroy fed-sysml Terraform resources.")
     print("- start simulator [name]  Start cloud-deployer-test-simulator for a saved digital twin.")
     print("- stop simulator [name]   Stop and remove a running cloud-deployer-test-simulator.")
+    print("- start grafana           Start local Grafana with generated provisioning.")
+    print("- stop grafana            Stop and remove local Grafana.")
     print("- exit                Stop the watcher.")
 
 

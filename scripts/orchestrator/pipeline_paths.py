@@ -45,6 +45,9 @@ FEDERATION_TERRAFORM_MAIN_FILE = FEDERATION_OUTPUT_DIR / "main.tf"
 FEDERATION_TERRAFORM_PLAN_FILE = "fed-sysml.tfplan"
 FEDERATION_TERRAFORM_PLAN_PATH = FEDERATION_OUTPUT_DIR / FEDERATION_TERRAFORM_PLAN_FILE
 
+GRAFANA_DIR = PIPELINE_ROOT / "grafana"
+GRAFANA_STATE_PATH = GRAFANA_DIR / "grafana.json"
+
 def converter_label(converter: str) -> str:
     return "sysml-v1" if converter == "v1" else "sysml-v2"
 

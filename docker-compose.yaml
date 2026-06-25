@@ -129,5 +129,24 @@ services:
     ports:
       - "127.0.0.1:${SIMULATOR_HOST_PORT:-5000}:5000"
 
+  local-grafana:
+    image: ${LOCAL_GRAFANA_IMAGE:-grafana/grafana:10.4.19}
+    profiles:
+      - grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: "${LOCAL_GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${LOCAL_GRAFANA_ADMIN_PASSWORD:-admin123}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: "${LOCAL_GRAFANA_PLUGINS:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-eu-central-1}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-eu-central-1}"
+    ports:
+      - "127.0.0.1:${LOCAL_GRAFANA_HOST_PORT:-3000}:3000"
+    volumes:
+      - grafana:/var/lib/grafana
+
 volumes:
   enterprise-architect-wine:
+  grafana:

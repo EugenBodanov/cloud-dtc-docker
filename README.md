@@ -306,3 +306,41 @@ pipeline/fed-sysml/input/strategyInputs
 and runs `fed-sysml`. In other words, `fedtwin.json` defines what gets
 federated, while `deployments/<Twin>/output` defines which deployed twins are
 available for federation.
+
+## Local Grafana
+
+The demo uses one shared local Grafana container:
+
+```text
+start grafana
+stop grafana
+```
+
+The orchestrator does not create Grafana datasources or dashboards. It only
+starts/stops the container and records runtime state in:
+
+```text
+pipeline/grafana/grafana.json
+```
+
+Grafana plugins can be installed at container startup with:
+
+```text
+LOCAL_GRAFANA_PLUGINS=grafana-iot-twinmaker-app
+```
+
+Use a comma-separated list for multiple plugins. You can also set
+`LOCAL_GRAFANA_IMAGE` to a custom image that already contains the plugins you
+need.
+
+By default Grafana runs at:
+
+```text
+http://127.0.0.1:3000
+```
+
+Override the port with:
+
+```text
+LOCAL_GRAFANA_HOST_PORT=3030
+```

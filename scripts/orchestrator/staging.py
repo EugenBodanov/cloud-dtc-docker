@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import socket
@@ -12,6 +13,8 @@ from typing import Callable
 from .errors import fail
 from .pipeline_paths import (
     CONFIG_FILES,
+    GRAFANA_DIR,
+    GRAFANA_STATE_PATH,
     MANAGER_DEPLOYMENTS_DIR,
     MANAGER_INPUT_DIR,
     MANAGER_OUTPUT_DIR,
@@ -36,6 +39,10 @@ SIMULATOR_STATE_FILE = "simulator.json"
 SIMULATOR_PORT_START = 5000
 SIMULATOR_PORT_END = 5999
 SimulatorState = dict[str, str | int]
+GrafanaState = dict[str, str | int]
+GRAFANA_DEFAULT_HOST_PORT = 3000
+GRAFANA_PROJECT_NAME = "cloud-dtc-grafana"
+GRAFANA_SERVICE_URL = "http://127.0.0.1"
 
 
 def clean_pipeline_dir(path: Path) -> None:
@@ -265,9 +272,7 @@ def simulator_project_name(twin_name: str) -> str:
     if not twin_name:
         fail("Digital twin deployment name must be a non-empty string.")
 
-    slug = re.sub(r"[^a-z0-9]+", "-", twin_name.casefold()).strip("-")
-    if not slug:
-        slug = "twin"
+    slug = _slugify(twin_name)
     digest = hashlib.sha256(twin_name.encode("utf-8")).hexdigest()[:8]
     return f"cloud-dtc-simulator-{slug}-{digest}"
 
@@ -346,6 +351,57 @@ def delete_simulator_state(twin_name: str) -> None:
     if state_file.is_file():
         state_file.unlink()
         print(f"Removed simulator state: {relative_to_repo(state_file)}")
+
+
+def local_grafana_project_name() -> str:
+    return GRAFANA_PROJECT_NAME
+
+
+def local_grafana_host_port() -> int:
+    raw_port = os.environ.get("LOCAL_GRAFANA_HOST_PORT", str(GRAFANA_DEFAULT_HOST_PORT))
+    try:
+        port = int(raw_port)
+    except ValueError:
+        fail(f"LOCAL_GRAFANA_HOST_PORT must be an integer, got: {raw_port}")
+    if not (1 <= port <= 65535):
+        fail(f"LOCAL_GRAFANA_HOST_PORT must be between 1 and 65535, got: {raw_port}")
+    return port
+
+
+def local_grafana_url(host_port: int | None = None) -> str:
+    return f"{GRAFANA_SERVICE_URL}:{host_port or local_grafana_host_port()}"
+
+
+def prepare_local_grafana_stage() -> GrafanaState:
+    ensure_dir(GRAFANA_DIR)
+    return write_local_grafana_state(host_port=local_grafana_host_port())
+
+
+def write_local_grafana_state(
+    *,
+    host_port: int,
+) -> GrafanaState:
+    state: GrafanaState = {
+        "project_name": local_grafana_project_name(),
+        "host_port": host_port,
+        "url": local_grafana_url(host_port),
+    }
+    GRAFANA_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    GRAFANA_STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    print(f"Saved local Grafana state: {relative_to_repo(GRAFANA_STATE_PATH)}")
+    return state
+
+
+def read_local_grafana_state() -> GrafanaState | None:
+    if not GRAFANA_STATE_PATH.is_file():
+        return None
+    return _load_local_grafana_state(GRAFANA_STATE_PATH)
+
+
+def delete_local_grafana_state() -> None:
+    if GRAFANA_STATE_PATH.is_file():
+        GRAFANA_STATE_PATH.unlink()
+        print(f"Removed local Grafana state: {relative_to_repo(GRAFANA_STATE_PATH)}")
 
 
 def required_twins_from_fedtwin(fedtwin_path: Path) -> list[str]:
@@ -485,6 +541,38 @@ def _copy_directory_contents_clean(
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
+
+
+def _load_local_grafana_state(state_file: Path) -> GrafanaState:
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"Local Grafana state is not valid JSON: {relative_to_repo(state_file)} ({error})")
+
+    if not isinstance(data, dict):
+        fail(f"Local Grafana state root must be an object: {relative_to_repo(state_file)}")
+
+    project_name = data.get("project_name")
+    host_port = data.get("host_port")
+    url = data.get("url")
+
+    if not isinstance(project_name, str) or not project_name:
+        fail(f"Local Grafana state field 'project_name' must be a non-empty string: {relative_to_repo(state_file)}")
+    if not isinstance(host_port, int):
+        fail(f"Local Grafana state field 'host_port' must be an integer: {relative_to_repo(state_file)}")
+    if not isinstance(url, str) or not url:
+        fail(f"Local Grafana state field 'url' must be a non-empty string: {relative_to_repo(state_file)}")
+
+    return {
+        "project_name": project_name,
+        "host_port": host_port,
+        "url": url,
+    }
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    return slug or "item"
 
 
 def _load_simulator_state(state_file: Path) -> SimulatorState:

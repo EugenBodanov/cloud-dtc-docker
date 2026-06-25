@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.orchestrator import staging
 
@@ -17,6 +18,8 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.manager_deployments = self.pipeline_root / "digital-twin-manager" / "deployments"
         self.federation_input = self.pipeline_root / "fed-sysml" / "input"
         self.federation_output = self.pipeline_root / "fed-sysml" / "output"
+        self.grafana_dir = self.pipeline_root / "grafana"
+        self.grafana_state = self.grafana_dir / "grafana.json"
 
         for path in (
             self.manager_input,
@@ -34,6 +37,8 @@ class OrchestratorStagingTests(unittest.TestCase):
             "MANAGER_DEPLOYMENTS_DIR": staging.MANAGER_DEPLOYMENTS_DIR,
             "FEDERATION_INPUT_DIR": staging.FEDERATION_INPUT_DIR,
             "FEDERATION_OUTPUT_DIR": staging.FEDERATION_OUTPUT_DIR,
+            "GRAFANA_DIR": staging.GRAFANA_DIR,
+            "GRAFANA_STATE_PATH": staging.GRAFANA_STATE_PATH,
         }
         staging.PIPELINE_ROOT = self.pipeline_root
         staging.MANAGER_INPUT_DIR = self.manager_input
@@ -41,6 +46,8 @@ class OrchestratorStagingTests(unittest.TestCase):
         staging.MANAGER_DEPLOYMENTS_DIR = self.manager_deployments
         staging.FEDERATION_INPUT_DIR = self.federation_input
         staging.FEDERATION_OUTPUT_DIR = self.federation_output
+        staging.GRAFANA_DIR = self.grafana_dir
+        staging.GRAFANA_STATE_PATH = self.grafana_state
 
     def tearDown(self) -> None:
         for name, value in self.original_paths.items():
@@ -231,6 +238,16 @@ class OrchestratorStagingTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             staging.stage_federation_inputs_from_deployments()
+
+    def test_prepare_local_grafana_stage_writes_runtime_state(self) -> None:
+        with patch.dict("os.environ", {"LOCAL_GRAFANA_HOST_PORT": "3030"}, clear=True):
+            state = staging.prepare_local_grafana_stage()
+
+        saved_state = json.loads(self.grafana_state.read_text(encoding="utf-8"))
+        self.assertEqual(saved_state, state)
+        self.assertEqual(state["project_name"], "cloud-dtc-grafana")
+        self.assertEqual(state["url"], "http://127.0.0.1:3030")
+        self.assertEqual(staging.read_local_grafana_state(), state)
 
 
 if __name__ == "__main__":

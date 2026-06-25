@@ -8,6 +8,7 @@ from .pipeline_paths import FEDERATION_TERRAFORM_PLAN_FILE, PROFILE_SERVICES, re
 
 INFRASTRUCTURE_SERVICES = ("enterprise-architect", "sysml-kernel")
 SIMULATOR_SERVICE = "cloud-deployer-test-simulator"
+LOCAL_GRAFANA_SERVICE = "local-grafana"
 
 
 def compose_command(
@@ -276,5 +277,52 @@ def remove_cloud_deployer_test_simulator(
         "--force",
         "--stop",
         SIMULATOR_SERVICE,
+    ]
+    run_command(command, show_output=show_container_logs)
+
+
+def start_local_grafana(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    project_name: str,
+    host_port: int,
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    command = compose_command(
+        compose_file,
+        with_profiles(profiles, "grafana"),
+        project_name=project_name,
+    ) + ["up", "-d"]
+    if build_images:
+        command.append("--build")
+    command.append(LOCAL_GRAFANA_SERVICE)
+    run_command(
+        command,
+        show_output=show_container_logs,
+        env={"LOCAL_GRAFANA_HOST_PORT": str(host_port)},
+    )
+
+
+def remove_local_grafana(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    project_name: str,
+    show_container_logs: bool,
+) -> None:
+    print("\nRemoving local Grafana container:")
+    print(f"- {LOCAL_GRAFANA_SERVICE} ({project_name})")
+
+    command = compose_command(
+        compose_file,
+        with_profiles(profiles, "grafana"),
+        project_name=project_name,
+    ) + [
+        "rm",
+        "--force",
+        "--stop",
+        LOCAL_GRAFANA_SERVICE,
     ]
     run_command(command, show_output=show_container_logs)

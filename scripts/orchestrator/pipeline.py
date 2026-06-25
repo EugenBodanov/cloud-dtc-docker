@@ -5,6 +5,7 @@ from pathlib import Path
 from .config import PipelineConfig
 from .docker_compose import (
     remove_cloud_deployer_test_simulator,
+    remove_local_grafana,
     run_converter,
     run_manager_destroy,
     run_manager_deploy,
@@ -14,6 +15,7 @@ from .docker_compose import (
     run_fed_sysml_terraform_init,
     run_fed_sysml_terraform_plan,
     start_cloud_deployer_test_simulator,
+    start_local_grafana,
 )
 from .pipeline_paths import (
     FEDERATION_OUTPUT_DIR,
@@ -32,16 +34,20 @@ from .staging import (
     clean_pipeline_dir,
     copy_configs_to_manager,
     delete_simulator_state,
+    delete_local_grafana_state,
     find_converter_output,
     has_config_set,
     list_simulator_states,
+    local_grafana_project_name,
     prepare_manager_stage,
     prepare_federation_stage,
+    prepare_local_grafana_stage,
     print_file_listing,
     print_config_set,
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
+    read_local_grafana_state,
     read_simulator_state,
     require_manager_deployment_simulator_input,
     restore_manager_deployment_input,
@@ -233,6 +239,39 @@ def remove_all_cloud_deployer_test_simulators_stage(config: PipelineConfig) -> N
 
     for state in states:
         remove_cloud_deployer_test_simulator_stage(config, str(state["digital_twin_name"]))
+
+
+def start_local_grafana_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    state = prepare_local_grafana_stage()
+    start_local_grafana(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        project_name=str(state["project_name"]),
+        host_port=int(state["host_port"]),
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+    )
+    print(f"\nLocal Grafana is running at {state['url']}")
+
+
+def stop_local_grafana_stage(config: PipelineConfig) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    state = read_local_grafana_state()
+    project_name = str(state["project_name"]) if state else local_grafana_project_name()
+    remove_local_grafana(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        project_name=project_name,
+        show_container_logs=config.show_container_logs,
+    )
+    delete_local_grafana_state()
 
 
 def run_federation_stage(config: PipelineConfig) -> None:

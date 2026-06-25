@@ -85,6 +85,33 @@ class OrchestratorAppCommandTests(unittest.TestCase):
         self.assertTrue(matched)
         self.assertEqual(target, "dtc-y-03")
 
+    def test_start_grafana_matches_without_target(self) -> None:
+        matched, target = app._grafana_command_target(
+            "start grafana",
+            app.START_GRAFANA_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertIsNone(target)
+
+    def test_grafana_alias_matches_without_target(self) -> None:
+        matched, target = app._grafana_command_target(
+            "grafana",
+            app.START_GRAFANA_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertIsNone(target)
+
+    def test_stop_grafana_matches_without_target(self) -> None:
+        matched, target = app._grafana_command_target(
+            "stop grafana",
+            app.STOP_GRAFANA_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertIsNone(target)
+
 
 if __name__ == "__main__":
     unittest.main()
