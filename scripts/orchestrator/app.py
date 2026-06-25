@@ -20,8 +20,9 @@ from .pipeline import (
     run_fed_sysml_terraform_stage,
     run_federation_stage,
     run_pipeline,
+    run_staged_converter_stage,
 )
-from .pipeline_paths import relative_to_repo, resolve_repo_path
+from .pipeline_paths import converter_label, relative_to_repo, resolve_repo_path
 from .staging import list_manager_deployments, list_simulator_states
 from .user_input import UserInput
 
@@ -53,6 +54,24 @@ DESTROY_DIGITAL_TWIN_MANAGER_ALIASES = (
     ["digital", "twin", "manager", "destroy"],
     ["destroy", "deployed", "digital", "twin"],
     ["destroy", "deployed", "digital", "twin", "manager"],
+)
+
+CONTINUE_SYSML_V1_ALIASES = (
+    ["sysml", "v1"],
+    ["continue", "sysml", "v1"],
+    ["continue", "with", "sysml", "v1"],
+    ["digital", "twin", "profile", "sysml", "v1"],
+    ["continue", "digital", "twin", "profile", "sysml", "v1"],
+    ["continue", "with", "digital", "twin", "profile", "sysml", "v1"],
+)
+
+CONTINUE_SYSML_V2_ALIASES = (
+    ["sysml", "v2"],
+    ["continue", "sysml", "v2"],
+    ["continue", "with", "sysml", "v2"],
+    ["digital", "twin", "profile", "sysml", "v2"],
+    ["continue", "digital", "twin", "profile", "sysml", "v2"],
+    ["continue", "with", "digital", "twin", "profile", "sysml", "v2"],
 )
 
 START_SIMULATOR_ALIASES = (
@@ -121,6 +140,7 @@ def run_app(options: LaunchOptions) -> None:
         user_input.start()
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
+        print("Type 'continue sysml-v1' or 'continue sysml-v2' to run a staged converter input.")
         print("Type 'continue digital-twin-manager [name]' to deploy a saved digital twin input.")
         print("Type 'destroy digital-twin-manager [name]' to destroy a saved digital twin deployment.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
@@ -239,6 +259,16 @@ def _run_digital_twin_manager_destroy_safely(config: PipelineConfig, deployment_
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
         print(f"\nDigital twin manager destroy failed with exit code {code}. Watching will continue.")
+        return False
+
+
+def _run_staged_converter_safely(config: PipelineConfig, converter: str) -> bool:
+    try:
+        run_staged_converter_stage(config, converter=converter)
+        return True
+    except SystemExit as error:
+        code = error.code if isinstance(error.code, int) else 1
+        print(f"\n{converter_label(converter)} converter step failed with exit code {code}. Watching will continue.")
         return False
 
 
@@ -460,6 +490,27 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         print("Destroying fed-sysml Terraform resources.")
         _run_fed_sysml_terraform_safely(config, fed_terraform_action, auto_approve=True)
         return
+    converter, converter_target = _sysml_profile_command_target(command_text)
+    if converter:
+        label = converter_label(converter)
+        if converter_target:
+            print(
+                "SysML profile converter commands use staged input and do not take a target/path. "
+                f"Use 'continue {label}'."
+            )
+            return
+        print(f"Continuing from {label} staged input.")
+        converter_succeeded = _run_staged_converter_safely(config, converter)
+        if not converter_succeeded:
+            return
+        run_manager = _prompt_yes_no(user_input, f"Run digital-twin-manager after {label}? [y/N] ")
+        if not run_manager:
+            return
+        run_federation = _prompt_yes_no(user_input, "Run federation workflow after digital twin manager? [y/N] ")
+        manager_succeeded = _run_digital_twin_manager_safely(config)
+        if run_federation and manager_succeeded:
+            _run_federation_safely(config)
+        return
     if _is_continue_fed_sysml(value):
         print("Continuing from fed-sysml.")
         _run_federation_safely(config)
@@ -552,6 +603,18 @@ def _grafana_command_target(
     return _command_target(command, aliases)
 
 
+def _sysml_profile_command_target(command: str) -> tuple[str | None, str | None]:
+    matched, target = _command_target(command, CONTINUE_SYSML_V1_ALIASES)
+    if matched:
+        return "v1", target
+
+    matched, target = _command_target(command, CONTINUE_SYSML_V2_ALIASES)
+    if matched:
+        return "v2", target
+
+    return None, None
+
+
 def _command_target(
     command: str,
     aliases: tuple[list[str], ...],
@@ -628,6 +691,11 @@ def _is_destroy_digital_twin_manager(value: str) -> bool:
     return matched
 
 
+def _is_continue_sysml_profile(value: str) -> bool:
+    converter, target = _sysml_profile_command_target(value)
+    return converter is not None and target is None
+
+
 def _is_start_cloud_deployer_test_simulator(value: str) -> bool:
     matched, _ = _simulator_command_target(value, START_SIMULATOR_ALIASES)
     return matched
@@ -650,6 +718,8 @@ def _is_stop_local_grafana(value: str) -> bool:
 
 def _print_commands() -> None:
     print("Available commands:")
+    print("- continue sysml-v1              Run staged digital-twin-profile-sysml-v1 input.")
+    print("- continue sysml-v2              Run staged digital-twin-profile-sysml-v2 input.")
     print("- continue digital-twin-manager [name]  Deploy a saved digital-twin-manager input.")
     print("- destroy digital-twin-manager [name]   Destroy a saved digital-twin-manager deployment.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")

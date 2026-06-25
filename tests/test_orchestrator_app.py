@@ -42,6 +42,30 @@ class OrchestratorAppCommandTests(unittest.TestCase):
         self.assertTrue(matched)
         self.assertEqual(target, "dtc-y-03")
 
+    def test_continue_sysml_v1_short_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v1")
+
+        self.assertEqual(converter, "v1")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_v2_short_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v2")
+
+        self.assertEqual(converter, "v2")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_profile_long_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue digital-twin-profile-sysml-v1")
+
+        self.assertEqual(converter, "v1")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_profile_target_is_preserved_for_rejection(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v2 demo.sysml")
+
+        self.assertEqual(converter, "v2")
+        self.assertEqual(target, "demo.sysml")
+
     def test_resolve_manager_deployment_selection_supports_number_and_name(self) -> None:
         deployments = ["Battery", "PV"]
 
