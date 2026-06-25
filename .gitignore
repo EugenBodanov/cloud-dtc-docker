@@ -35,4 +35,8 @@ pipeline/fed-sysml/input/*
 !pipeline/fed-sysml/input/fedtwin.example.json
 !.env.example
 
+!pipeline/digital-twin-profile-sysml-v2/
+!pipeline/digital-twin-profile-sysml-v2/input/
+!pipeline/digital-twin-profile-sysml-v2/input/*
+
 **/__pycache__/

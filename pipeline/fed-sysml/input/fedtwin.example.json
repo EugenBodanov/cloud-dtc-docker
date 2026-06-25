@@ -5,14 +5,14 @@
       "newStrategies": [
         {
           "name": "ConsumptionStrategy",
-          "pathToCode": "/home/marcocotrotzo/PycharmProjects/SymlCOnv/input/sysml/testLambdaFunctions/fedTwinCombinedStrategy",
+          "pathToCode": "/pipeline/code/microgrid/fedTwinCombinedStrategy",
           "feedback": {
             "type": "INTERNAL",
-            "topic": "Battery/iot-data"
+            "topic": "Battery2/iot-data"
           },
           "strategies": [
-            "PV.production",
-            "Battery.status"
+            "PV2.production",
+            "Battery2.status"
           ]
         }
       ]
