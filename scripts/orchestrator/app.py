@@ -19,11 +19,38 @@ from .pipeline import (
     run_pipeline,
 )
 from .pipeline_paths import relative_to_repo, resolve_repo_path
+from .staging import list_manager_deployments
 from .user_input import UserInput
 
 
 class StopRequested(Exception):
     pass
+
+
+CONTINUE_DIGITAL_TWIN_MANAGER_ALIASES = (
+    ["digital", "twin"],
+    ["digital", "twin", "manager"],
+    ["deploy", "to", "aws"],
+    ["continue", "digital", "twin"],
+    ["continue", "digital", "twin", "manager"],
+    ["continue", "with", "digital", "twin"],
+    ["continue", "with", "digital", "twin", "manager"],
+    ["continue", "deploy", "to", "aws"],
+    ["continue", "with", "deploy", "to", "aws"],
+)
+
+DESTROY_DIGITAL_TWIN_MANAGER_ALIASES = (
+    ["destroy"],
+    ["destroy", "aws"],
+    ["destroy", "deploy"],
+    ["destroy", "deployment"],
+    ["destroy", "digital", "twin"],
+    ["destroy", "digital", "twin", "manager"],
+    ["digital", "twin", "destroy"],
+    ["digital", "twin", "manager", "destroy"],
+    ["destroy", "deployed", "digital", "twin"],
+    ["destroy", "deployed", "digital", "twin", "manager"],
+)
 
 
 def run_app(options: LaunchOptions) -> None:
@@ -53,8 +80,8 @@ def run_app(options: LaunchOptions) -> None:
         user_input.start()
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
-        print("Type 'continue digital-twin-manager' to run digital-twin-manager using staged input.")
-        print("Type 'destroy digital-twin-manager' to destroy the deployed digital twin.")
+        print("Type 'continue digital-twin-manager [name]' to deploy a saved digital twin input.")
+        print("Type 'destroy digital-twin-manager [name]' to destroy a saved digital twin deployment.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
         print("Type 'fed terraform plan' to plan the generated fed-sysml Terraform output.")
         print("Type 'fed terraform apply' to apply the generated fed-sysml Terraform output.")
@@ -152,9 +179,9 @@ def _run_federation_safely(config: PipelineConfig) -> bool:
         return False
 
 
-def _run_digital_twin_manager_safely(config: PipelineConfig) -> bool:
+def _run_digital_twin_manager_safely(config: PipelineConfig, deployment_name: str | None = None) -> bool:
     try:
-        run_digital_twin_manager_stage(config)
+        run_digital_twin_manager_stage(config, deployment_name=deployment_name)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
@@ -162,9 +189,9 @@ def _run_digital_twin_manager_safely(config: PipelineConfig) -> bool:
         return False
 
 
-def _run_digital_twin_manager_destroy_safely(config: PipelineConfig) -> bool:
+def _run_digital_twin_manager_destroy_safely(config: PipelineConfig, deployment_name: str | None = None) -> bool:
     try:
-        run_digital_twin_manager_destroy_stage(config)
+        run_digital_twin_manager_destroy_stage(config, deployment_name=deployment_name)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
@@ -238,8 +265,71 @@ def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
         print("Please answer 'y', 'n', or 'exit': ", end="", flush=True)
 
 
+def _select_manager_deployment(user_input: UserInput, requested_name: str | None) -> str | None:
+    deployments = list_manager_deployments()
+    if not deployments:
+        print(
+            "No saved digital-twin-manager deployments found. "
+            "Run the pipeline first so deployment input is saved."
+        )
+        return None
+
+    if requested_name:
+        resolved = _resolve_manager_deployment_selection(requested_name, deployments)
+        if resolved:
+            return resolved
+        _print_unknown_deployment(requested_name, deployments)
+        return None
+
+    print("\nSaved digital-twin-manager deployments:")
+    for index, deployment_name in enumerate(deployments, start=1):
+        print(f"{index}. {deployment_name}")
+
+    print("Select digital twin deployment by number or name [exit to cancel]: ", end="", flush=True)
+    while True:
+        line = user_input.get_line(timeout=None)
+        if line is None:
+            continue
+        answer = line.strip()
+        if _is_exit(answer.lower()):
+            raise StopRequested
+        if not answer:
+            print("Please enter a deployment number, name, or 'exit': ", end="", flush=True)
+            continue
+
+        resolved = _resolve_manager_deployment_selection(answer, deployments)
+        if resolved:
+            return resolved
+
+        _print_unknown_deployment(answer, deployments, prefix="Please choose an available deployment")
+        print("Selection: ", end="", flush=True)
+
+
+def _resolve_manager_deployment_selection(selection: str, deployments: list[str]) -> str | None:
+    if selection.isdigit():
+        index = int(selection)
+        if 1 <= index <= len(deployments):
+            return deployments[index - 1]
+        return None
+
+    exact = [name for name in deployments if name == selection]
+    if len(exact) == 1:
+        return exact[0]
+
+    folded = [name for name in deployments if name.casefold() == selection.casefold()]
+    if len(folded) == 1:
+        return folded[0]
+    return None
+
+
+def _print_unknown_deployment(selection: str, deployments: list[str], *, prefix: str = "Unknown digital twin deployment") -> None:
+    available = ", ".join(deployments)
+    print(f"{prefix} '{selection}'. Available deployments: {available}")
+
+
 def _handle_command(config: PipelineConfig, command: str, user_input: UserInput) -> None:
-    value = command.strip().lower()
+    command_text = command.strip()
+    value = command_text.lower()
     if not value:
         return
     if _is_exit(value):
@@ -270,19 +360,33 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         print("Continuing from fed-sysml.")
         _run_federation_safely(config)
         return
-    if _is_continue_digital_twin_manager(value):
+    is_continue_manager, requested_deployment = _digital_twin_manager_command_target(
+        command_text,
+        CONTINUE_DIGITAL_TWIN_MANAGER_ALIASES,
+    )
+    if is_continue_manager:
+        deployment_name = _select_manager_deployment(user_input, requested_deployment)
+        if not deployment_name:
+            return
         run_federation = _prompt_yes_no(user_input, "Run federation workflow after digital twin manager? [y/N] ")
-        print("Continuing from digital-twin-manager.")
-        manager_succeeded = _run_digital_twin_manager_safely(config)
+        print(f"Continuing from digital-twin-manager deployment: {deployment_name}")
+        manager_succeeded = _run_digital_twin_manager_safely(config, deployment_name)
         if run_federation and manager_succeeded:
             _run_federation_safely(config)
         return
-    if _is_destroy_digital_twin_manager(value):
+    is_destroy_manager, requested_deployment = _digital_twin_manager_command_target(
+        command_text,
+        DESTROY_DIGITAL_TWIN_MANAGER_ALIASES,
+    )
+    if is_destroy_manager:
+        deployment_name = _select_manager_deployment(user_input, requested_deployment)
+        if not deployment_name:
+            return
         if not _prompt_yes_no(user_input, "Destroy deployed digital twin resources? [y/N] "):
             print("Skipped digital-twin-manager destroy.")
             return
-        print("Destroying deployed digital twin with digital-twin-manager.")
-        _run_digital_twin_manager_destroy_safely(config)
+        print(f"Destroying digital-twin-manager deployment: {deployment_name}")
+        _run_digital_twin_manager_destroy_safely(config, deployment_name)
         return
     if _is_start_cloud_deployer_test_simulator(value):
         print("Starting cloud-deployer-test-simulator.")
@@ -297,6 +401,31 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         _print_commands()
         return
     print("Unknown command. Type 'help' for commands or 'exit' to stop.")
+
+
+def _digital_twin_manager_command_target(
+    command: str,
+    aliases: tuple[list[str], ...],
+) -> tuple[bool, str | None]:
+    raw_parts = command.split()
+    expanded_tokens: list[str] = []
+    raw_index_by_expanded_token: list[int] = []
+
+    for raw_index, part in enumerate(raw_parts):
+        for token in part.replace("-", " ").replace("_", " ").split():
+            expanded_tokens.append(token.lower())
+            raw_index_by_expanded_token.append(raw_index)
+
+    for alias in sorted(aliases, key=len, reverse=True):
+        if expanded_tokens[:len(alias)] != alias:
+            continue
+        if not raw_index_by_expanded_token:
+            return True, None
+        consumed_raw_index = raw_index_by_expanded_token[len(alias) - 1]
+        target_parts = raw_parts[consumed_raw_index + 1:]
+        return True, " ".join(target_parts) if target_parts else None
+
+    return False, None
 
 
 def _is_exit(value: str) -> bool:
@@ -341,34 +470,13 @@ def _fed_sysml_terraform_action(value: str) -> str | None:
 
 
 def _is_continue_digital_twin_manager(value: str) -> bool:
-    tokens = value.replace("-", " ").replace("_", " ").split()
-    return tokens in (
-        ["digital", "twin"],
-        ["digital", "twin", "manager"],
-        ["deploy", "to", "aws"],
-        ["continue", "digital", "twin"],
-        ["continue", "digital", "twin", "manager"],
-        ["continue", "with", "digital", "twin"],
-        ["continue", "with", "digital", "twin", "manager"],
-        ["continue", "deploy", "to", "aws"],
-        ["continue", "with", "deploy", "to", "aws"],
-    )
+    matched, _ = _digital_twin_manager_command_target(value, CONTINUE_DIGITAL_TWIN_MANAGER_ALIASES)
+    return matched
 
 
 def _is_destroy_digital_twin_manager(value: str) -> bool:
-    tokens = value.replace("-", " ").replace("_", " ").split()
-    return tokens in (
-        ["destroy"],
-        ["destroy", "aws"],
-        ["destroy", "deploy"],
-        ["destroy", "deployment"],
-        ["destroy", "digital", "twin"],
-        ["destroy", "digital", "twin", "manager"],
-        ["digital", "twin", "destroy"],
-        ["digital", "twin", "manager", "destroy"],
-        ["destroy", "deployed", "digital", "twin"],
-        ["destroy", "deployed", "digital", "twin", "manager"],
-    )
+    matched, _ = _digital_twin_manager_command_target(value, DESTROY_DIGITAL_TWIN_MANAGER_ALIASES)
+    return matched
 
 
 def _is_start_cloud_deployer_test_simulator(value: str) -> bool:
@@ -406,8 +514,8 @@ def _is_stop_cloud_deployer_test_simulator(value: str) -> bool:
 
 def _print_commands() -> None:
     print("Available commands:")
-    print("- continue digital-twin-manager  Run digital-twin-manager using staged manager input.")
-    print("- destroy digital-twin-manager   Destroy the deployed digital twin using staged manager input.")
+    print("- continue digital-twin-manager [name]  Deploy a saved digital-twin-manager input.")
+    print("- destroy digital-twin-manager [name]   Destroy a saved digital-twin-manager deployment.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
     print("- fed terraform plan  Run Terraform init and plan for generated fed-sysml output.")
     print("- fed terraform apply  Run Terraform init, plan, and apply for generated fed-sysml output.")

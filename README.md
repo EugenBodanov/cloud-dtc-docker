@@ -222,21 +222,39 @@ deploy disabled when the setting is unset.
 
 ## Federation Artifacts
 
-Each `digital-twin-manager` deploy still handles one digital twin. After a
-successful deploy, the orchestrator saves the generated federation input under:
+Each `digital-twin-manager` stage still handles one digital twin. After configs
+are staged, the orchestrator saves the reusable manager input under:
 
 ```text
-pipeline/digital-twin-manager/deployments/<digital_twin_name>
+pipeline/digital-twin-manager/deployments/<digital_twin_name>/input
 ```
 
-For example, after deploying `PV` and then `Battery`, the saved artifacts are:
+After a successful deploy, it saves the generated output under:
 
 ```text
-pipeline/digital-twin-manager/deployments/PV/PV_federation_input.json
-pipeline/digital-twin-manager/deployments/Battery/Battery_federation_input.json
+pipeline/digital-twin-manager/deployments/<digital_twin_name>/output
 ```
 
-The federation stage is separate. When you type:
+For example, after staging and deploying `PV` and `Battery`, the saved artifacts
+look like:
+
+```text
+pipeline/digital-twin-manager/deployments/PV/input/config.json
+pipeline/digital-twin-manager/deployments/PV/output/PV_federation_input.json
+pipeline/digital-twin-manager/deployments/Battery/input/config.json
+pipeline/digital-twin-manager/deployments/Battery/output/Battery_federation_input.json
+```
+
+The `continue digital-twin-manager` and `destroy digital-twin-manager` commands
+use saved deployment inputs. Without an argument, they show a numbered menu. You
+can also select a twin directly:
+
+```text
+continue digital-twin-manager PV
+destroy digital-twin-manager Battery
+```
+
+The federation stage is still separate. When you type:
 
 ```text
 continue fed-sysml
@@ -264,5 +282,5 @@ pipeline/fed-sysml/input/strategyInputs
 ```
 
 and runs `fed-sysml`. In other words, `fedtwin.json` defines what gets
-federated, while the deployment artifact store defines which single-twin
-deploys are available.
+federated, while `deployments/<Twin>/output` defines which deployed twins are
+available for federation.

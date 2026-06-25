@@ -74,6 +74,12 @@ class OrchestratorStagingTests(unittest.TestCase):
     def write_broker_config(self) -> None:
         self.write_json(self.federation_input / "brokerConfig.json", {"brokers": {}})
 
+    def write_manager_config_set(self, directory: Path, twin_name: str) -> None:
+        self.write_json(directory / "config.json", {"digital_twin_name": twin_name})
+        self.write_json(directory / "config_hierarchy.json", [])
+        self.write_json(directory / "config_iot_devices.json", [])
+        self.write_json(directory / "config_events.json", [])
+
     def test_required_twins_accepts_one_twin_with_multiple_strategies(self) -> None:
         fedtwin = self.write_fedtwin(["dtc-y-03.stopCharging", "dtc-y-03.stopChargingP14"])
 
@@ -90,27 +96,58 @@ class OrchestratorStagingTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             staging.required_twins_from_fedtwin(fedtwin)
 
-    def test_save_manager_deployment_artifact_copies_current_twin_output(self) -> None:
-        self.write_json(self.manager_input / "config.json", {"digital_twin_name": "PV"})
+    def test_save_manager_deployment_input_copies_current_manager_input(self) -> None:
+        self.write_manager_config_set(self.manager_input, "PV")
+        self.write_json(self.manager_input / "config_credentials.json", {"aws_region": "eu-central-1"})
+
+        saved_input = staging.save_manager_deployment_input()
+
+        self.assertEqual(saved_input, self.manager_deployments / "PV" / "input")
+        self.assertTrue((saved_input / "config.json").is_file())
+        self.assertTrue((saved_input / "config_credentials.json").is_file())
+        self.assertEqual(staging.list_manager_deployments(), ["PV"])
+
+    def test_save_manager_deployment_output_preserves_saved_input(self) -> None:
+        self.write_manager_config_set(self.manager_input, "PV")
+        staging.save_manager_deployment_input()
         self.write_json(self.manager_output / "PV_federation_input.json", {"name": "PV"})
         self.write_json(self.manager_output / "Battery_federation_input.json", {"name": "Battery"})
         auth_dir = self.manager_output / "iot_devices_auth"
         auth_dir.mkdir()
         (auth_dir / "device.json").write_text("{}", encoding="utf-8")
 
-        saved_artifact = staging.save_manager_deployment_artifact()
+        saved_artifact = staging.save_manager_deployment_output()
 
-        self.assertEqual(saved_artifact, self.manager_deployments / "PV" / "PV_federation_input.json")
+        self.assertEqual(saved_artifact, self.manager_deployments / "PV" / "output" / "PV_federation_input.json")
         self.assertTrue(saved_artifact.is_file())
-        self.assertTrue((self.manager_deployments / "PV" / "iot_devices_auth" / "device.json").is_file())
-        self.assertFalse((self.manager_deployments / "PV" / "Battery_federation_input.json").exists())
+        self.assertTrue((self.manager_deployments / "PV" / "input" / "config.json").is_file())
+        self.assertTrue((self.manager_deployments / "PV" / "output" / "iot_devices_auth" / "device.json").is_file())
+        self.assertFalse((self.manager_deployments / "PV" / "output" / "Battery_federation_input.json").exists())
+
+    def test_save_manager_deployment_input_preserves_existing_output(self) -> None:
+        self.write_manager_config_set(self.manager_input, "PV")
+        self.write_json(self.manager_deployments / "PV" / "output" / "PV_federation_input.json", {"name": "PV"})
+
+        staging.save_manager_deployment_input()
+
+        self.assertTrue((self.manager_deployments / "PV" / "output" / "PV_federation_input.json").is_file())
+
+    def test_restore_manager_deployment_input_cleans_and_restores_selected_input(self) -> None:
+        self.write_manager_config_set(self.manager_deployments / "PV" / "input", "PV")
+        self.write_json(self.manager_input / "stale.json", {"stale": True})
+
+        restored_input = staging.restore_manager_deployment_input("pv")
+
+        self.assertEqual(restored_input, self.manager_input)
+        self.assertTrue((self.manager_input / "config.json").is_file())
+        self.assertFalse((self.manager_input / "stale.json").exists())
 
     def test_stage_federation_inputs_uses_only_twins_from_fedtwin(self) -> None:
         self.write_fedtwin(["PV.production", "Battery.status"])
         self.write_broker_config()
-        self.write_json(self.manager_deployments / "PV" / "PV_federation_input.json", {"name": "PV"})
-        self.write_json(self.manager_deployments / "Battery" / "Battery_federation_input.json", {"name": "Battery"})
-        self.write_json(self.manager_deployments / "Unused" / "Unused_federation_input.json", {"name": "Unused"})
+        self.write_json(self.manager_deployments / "PV" / "output" / "PV_federation_input.json", {"name": "PV"})
+        self.write_json(self.manager_deployments / "Battery" / "output" / "Battery_federation_input.json", {"name": "Battery"})
+        self.write_json(self.manager_deployments / "Unused" / "output" / "Unused_federation_input.json", {"name": "Unused"})
         self.write_json(self.federation_input / "strategyInputs" / "stale_federation_input.json", {"name": "stale"})
 
         staged = staging.stage_federation_inputs_from_deployments()
@@ -127,7 +164,7 @@ class OrchestratorStagingTests(unittest.TestCase):
     def test_stage_federation_inputs_fails_when_required_artifact_is_missing(self) -> None:
         self.write_fedtwin(["PV.production", "Battery.status"])
         self.write_broker_config()
-        self.write_json(self.manager_deployments / "PV" / "PV_federation_input.json", {"name": "PV"})
+        self.write_json(self.manager_deployments / "PV" / "output" / "PV_federation_input.json", {"name": "PV"})
 
         with self.assertRaises(SystemExit):
             staging.stage_federation_inputs_from_deployments()

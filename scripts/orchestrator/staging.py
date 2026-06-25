@@ -4,6 +4,7 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from .errors import fail
 from .pipeline_paths import (
@@ -150,27 +151,36 @@ def copy_configs_to_manager(converter_output_dir: Path, aws_credentials_file: Pa
 
 
 def read_manager_input_twin_name() -> str:
-    config_file = MANAGER_INPUT_DIR / "config.json"
-    if not config_file.is_file():
-        fail(f"Missing digital-twin-manager config file: {relative_to_repo(config_file)}")
-
-    try:
-        data = json.loads(config_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        fail(f"digital-twin-manager config is not valid JSON: {relative_to_repo(config_file)} ({error})")
-
-    if not isinstance(data, dict):
-        fail(f"digital-twin-manager config root must be an object: {relative_to_repo(config_file)}")
-
-    name = data.get("digital_twin_name")
-    if not isinstance(name, str) or not name:
-        fail(f"digital-twin-manager config field 'digital_twin_name' must be a non-empty string: {relative_to_repo(config_file)}")
-    if "/" in name or "\\" in name:
-        fail(f"digital_twin_name must not contain path separators: {name}")
-    return name
+    return _read_twin_name_from_config(MANAGER_INPUT_DIR / "config.json")
 
 
-def save_manager_deployment_artifact() -> Path:
+def list_manager_deployments() -> list[str]:
+    if not MANAGER_DEPLOYMENTS_DIR.is_dir():
+        return []
+
+    deployments: list[str] = []
+    for deployment_dir in MANAGER_DEPLOYMENTS_DIR.iterdir():
+        input_dir = deployment_dir / "input"
+        if deployment_dir.is_dir() and has_config_set(input_dir):
+            deployments.append(deployment_dir.name)
+    return sorted(deployments, key=str.casefold)
+
+
+def save_manager_deployment_input() -> Path:
+    if not has_config_set(MANAGER_INPUT_DIR):
+        fail(
+            "digital-twin-manager input is missing or incomplete. "
+            f"Expected configs in {relative_to_repo(MANAGER_INPUT_DIR)}."
+        )
+
+    twin_name = read_manager_input_twin_name()
+    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name / "input"
+    _copy_directory_contents_clean(MANAGER_INPUT_DIR, target_dir)
+    print(f"Saved digital-twin-manager deployment input: {relative_to_repo(target_dir)}")
+    return target_dir
+
+
+def save_manager_deployment_output() -> Path:
     twin_name = read_manager_input_twin_name()
     federation_input = MANAGER_OUTPUT_DIR / f"{twin_name}_federation_input.json"
     if not federation_input.is_file():
@@ -179,22 +189,54 @@ def save_manager_deployment_artifact() -> Path:
             f"Expected {relative_to_repo(federation_input)}."
         )
 
-    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name
-    clean_pipeline_dir(target_dir)
+    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name / "output"
 
-    for source in sorted(MANAGER_OUTPUT_DIR.iterdir()):
-        if source.name.endswith("_federation_input.json") and source.name != federation_input.name:
-            continue
+    def skip_stale_federation_input(path: Path) -> bool:
+        return path.name.endswith("_federation_input.json") and path.name != federation_input.name
 
-        target = target_dir / source.name
-        if source.is_dir() and not source.is_symlink():
-            shutil.copytree(source, target)
-        else:
-            shutil.copy2(source, target)
-
+    _copy_directory_contents_clean(MANAGER_OUTPUT_DIR, target_dir, skip=skip_stale_federation_input)
     saved_federation_input = target_dir / federation_input.name
-    print(f"Saved digital-twin-manager deployment artifact: {relative_to_repo(saved_federation_input)}")
+    print(f"Saved digital-twin-manager deployment output: {relative_to_repo(saved_federation_input)}")
     return saved_federation_input
+
+
+def save_manager_deployment_artifact() -> Path:
+    return save_manager_deployment_output()
+
+
+def restore_manager_deployment_input(twin_name: str) -> Path:
+    deployment_name = resolve_manager_deployment_name(twin_name)
+    source_dir = MANAGER_DEPLOYMENTS_DIR / deployment_name / "input"
+    if not has_config_set(source_dir):
+        fail(
+            f"Saved deployment input for twin '{deployment_name}' is missing or incomplete. "
+            f"Expected configs in {relative_to_repo(source_dir)}."
+        )
+
+    _copy_directory_contents_clean(source_dir, MANAGER_INPUT_DIR)
+    print(f"Restored digital-twin-manager input from deployment: {relative_to_repo(source_dir)}")
+    return MANAGER_INPUT_DIR
+
+
+def resolve_manager_deployment_name(twin_name: str) -> str:
+    if not twin_name:
+        fail("Digital twin deployment name must be a non-empty string.")
+    if "/" in twin_name or "\\" in twin_name:
+        fail(f"Digital twin deployment name must not contain path separators: {twin_name}")
+
+    deployments = list_manager_deployments()
+    if twin_name in deployments:
+        return twin_name
+
+    matches = [name for name in deployments if name.casefold() == twin_name.casefold()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        names = ", ".join(matches)
+        fail(f"Digital twin deployment name '{twin_name}' is ambiguous. Matches: {names}")
+
+    available = ", ".join(deployments) or "(none)"
+    fail(f"Unknown digital twin deployment '{twin_name}'. Available deployments: {available}")
 
 
 def required_twins_from_fedtwin(fedtwin_path: Path) -> list[str]:
@@ -279,12 +321,12 @@ def stage_federation_inputs_from_deployments() -> list[Path]:
 
     staged_files: list[Path] = []
     for twin_name in required_twins:
-        source = MANAGER_DEPLOYMENTS_DIR / twin_name / f"{twin_name}_federation_input.json"
+        source = MANAGER_DEPLOYMENTS_DIR / twin_name / "output" / f"{twin_name}_federation_input.json"
         if not source.is_file():
             fail(
                 f"Missing saved federation input for twin '{twin_name}'. "
                 f"Expected {relative_to_repo(source)}. "
-                "Deploy that digital twin first so its artifact is saved."
+                "Deploy that digital twin first so its output artifact is saved."
             )
 
         target = target_dir / source.name
@@ -293,6 +335,47 @@ def stage_federation_inputs_from_deployments() -> list[Path]:
         print(f"Copied {relative_to_repo(source)} -> {relative_to_repo(target)}")
 
     return staged_files
+
+
+def _read_twin_name_from_config(config_file: Path) -> str:
+    if not config_file.is_file():
+        fail(f"Missing digital-twin-manager config file: {relative_to_repo(config_file)}")
+
+    try:
+        data = json.loads(config_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"digital-twin-manager config is not valid JSON: {relative_to_repo(config_file)} ({error})")
+
+    if not isinstance(data, dict):
+        fail(f"digital-twin-manager config root must be an object: {relative_to_repo(config_file)}")
+
+    name = data.get("digital_twin_name")
+    if not isinstance(name, str) or not name:
+        fail(f"digital-twin-manager config field 'digital_twin_name' must be a non-empty string: {relative_to_repo(config_file)}")
+    if "/" in name or "\\" in name:
+        fail(f"digital_twin_name must not contain path separators: {name}")
+    return name
+
+
+def _copy_directory_contents_clean(
+    source_dir: Path,
+    target_dir: Path,
+    *,
+    skip: Callable[[Path], bool] | None = None,
+) -> None:
+    if not source_dir.is_dir():
+        fail(f"Expected directory but found missing path or file: {relative_to_repo(source_dir)}")
+
+    clean_pipeline_dir(target_dir)
+    for source in sorted(source_dir.iterdir()):
+        if skip and skip(source):
+            continue
+
+        target = target_dir / source.name
+        if source.is_dir() and not source.is_symlink():
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
 
 
 def print_config_set(label: str, config_dir: Path) -> None:

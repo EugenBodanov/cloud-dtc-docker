@@ -28,6 +28,7 @@ from .pipeline_paths import (
 )
 from .errors import fail
 from .staging import (
+    clean_pipeline_dir,
     copy_configs_to_manager,
     find_converter_output,
     has_config_set,
@@ -38,7 +39,9 @@ from .staging import (
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
-    save_manager_deployment_artifact,
+    restore_manager_deployment_input,
+    save_manager_deployment_input,
+    save_manager_deployment_output,
     stage_converter_input,
     stage_federation_inputs_from_deployments,
 )
@@ -113,17 +116,22 @@ def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: P
         keep_credentials=saved_credentials,
     )
     copy_configs_to_manager(converter_output, config.aws_credentials_file)
+    save_manager_deployment_input()
 
     if config.show_configs:
         print_config_set("digital-twin-manager input", MANAGER_INPUT_DIR)
 
 
-def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
+def run_digital_twin_manager_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
 
+    if deployment_name:
+        restore_manager_deployment_input(deployment_name)
+
     _require_manager_input()
+    clean_pipeline_dir(MANAGER_OUTPUT_DIR)
 
     run_manager_deploy(
         compose_file=compose_file,
@@ -131,14 +139,17 @@ def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
-    save_manager_deployment_artifact()
+    save_manager_deployment_output()
     print_manager_outputs()
 
 
-def run_digital_twin_manager_destroy_stage(config: PipelineConfig) -> None:
+def run_digital_twin_manager_destroy_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    if deployment_name:
+        restore_manager_deployment_input(deployment_name)
 
     _require_manager_input()
 
