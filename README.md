@@ -219,3 +219,50 @@ AWS deploy is controlled by `deploy_to_aws`. Leave it `false` during safe demos
 unless AWS credentials and deploy intent are confirmed. Set it to `null` or omit
 it to ask for AWS deploy confirmation during interactive runs; auto-run keeps
 deploy disabled when the setting is unset.
+
+## Federation Artifacts
+
+Each `digital-twin-manager` deploy still handles one digital twin. After a
+successful deploy, the orchestrator saves the generated federation input under:
+
+```text
+pipeline/digital-twin-manager/deployments/<digital_twin_name>
+```
+
+For example, after deploying `PV` and then `Battery`, the saved artifacts are:
+
+```text
+pipeline/digital-twin-manager/deployments/PV/PV_federation_input.json
+pipeline/digital-twin-manager/deployments/Battery/Battery_federation_input.json
+```
+
+The federation stage is separate. When you type:
+
+```text
+continue fed-sysml
+```
+
+the orchestrator reads:
+
+```text
+pipeline/fed-sysml/input/fedtwin.json
+```
+
+It extracts the required twin names from strategy references such as:
+
+```json
+"strategies": [
+  "PV.production",
+  "Battery.status"
+]
+```
+
+Then it copies only those saved artifacts into:
+
+```text
+pipeline/fed-sysml/input/strategyInputs
+```
+
+and runs `fed-sysml`. In other words, `fedtwin.json` defines what gets
+federated, while the deployment artifact store defines which single-twin
+deploys are available.

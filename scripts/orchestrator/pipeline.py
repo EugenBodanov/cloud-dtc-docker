@@ -38,8 +38,9 @@ from .staging import (
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
+    save_manager_deployment_artifact,
     stage_converter_input,
-    stage_federation_inputs,
+    stage_federation_inputs_from_deployments,
 )
 
 
@@ -130,6 +131,7 @@ def run_digital_twin_manager_stage(config: PipelineConfig) -> None:
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
+    save_manager_deployment_artifact()
     print_manager_outputs()
 
 
@@ -199,7 +201,7 @@ def run_federation_stage(config: PipelineConfig) -> None:
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
 
     prepare_federation_stage(clean_stage=config.clean_stage)
-    federation_inputs = stage_federation_inputs()
+    federation_inputs = stage_federation_inputs_from_deployments()
     print_file_listing("fed-sysml strategy input(s)", federation_inputs)
 
     run_fed_sysml(

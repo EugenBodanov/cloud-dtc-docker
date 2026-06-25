@@ -9,7 +9,7 @@
   ],
   "build_images": false,
   "clean_stage": true,
-  "show_container_logs": false,
+  "show_container_logs": true,
   "show_configs": true,
   "show_output_configs": false,
   "deploy_to_aws": null,

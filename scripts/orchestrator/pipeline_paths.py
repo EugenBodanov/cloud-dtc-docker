@@ -37,6 +37,7 @@ PROFILE_OUTPUT_DIRS = {
 
 MANAGER_INPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "input"
 MANAGER_OUTPUT_DIR = PIPELINE_ROOT / "digital-twin-manager" / "output"
+MANAGER_DEPLOYMENTS_DIR = PIPELINE_ROOT / "digital-twin-manager" / "deployments"
 
 FEDERATION_INPUT_DIR = PIPELINE_ROOT / "fed-sysml" / "input"
 FEDERATION_OUTPUT_DIR = PIPELINE_ROOT / "fed-sysml" / "output"

@@ -10,6 +10,9 @@
 !scripts/
 !scripts/**
 
+!tests/
+!tests/**
+
 !enterprise-architect/
 !enterprise-architect/projects/
 !enterprise-architect/projects/DemoProject.qea

@@ -8,6 +8,7 @@ from pathlib import Path
 from .errors import fail
 from .pipeline_paths import (
     CONFIG_FILES,
+    MANAGER_DEPLOYMENTS_DIR,
     MANAGER_INPUT_DIR,
     MANAGER_OUTPUT_DIR,
     PIPELINE_ROOT,
@@ -148,21 +149,144 @@ def copy_configs_to_manager(converter_output_dir: Path, aws_credentials_file: Pa
         print(f"Copied AWS credentials to {relative_to_repo(target)}")
 
 
+def read_manager_input_twin_name() -> str:
+    config_file = MANAGER_INPUT_DIR / "config.json"
+    if not config_file.is_file():
+        fail(f"Missing digital-twin-manager config file: {relative_to_repo(config_file)}")
+
+    try:
+        data = json.loads(config_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"digital-twin-manager config is not valid JSON: {relative_to_repo(config_file)} ({error})")
+
+    if not isinstance(data, dict):
+        fail(f"digital-twin-manager config root must be an object: {relative_to_repo(config_file)}")
+
+    name = data.get("digital_twin_name")
+    if not isinstance(name, str) or not name:
+        fail(f"digital-twin-manager config field 'digital_twin_name' must be a non-empty string: {relative_to_repo(config_file)}")
+    if "/" in name or "\\" in name:
+        fail(f"digital_twin_name must not contain path separators: {name}")
+    return name
+
+
+def save_manager_deployment_artifact() -> Path:
+    twin_name = read_manager_input_twin_name()
+    federation_input = MANAGER_OUTPUT_DIR / f"{twin_name}_federation_input.json"
+    if not federation_input.is_file():
+        fail(
+            "digital-twin-manager federation artifact is missing. "
+            f"Expected {relative_to_repo(federation_input)}."
+        )
+
+    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name
+    clean_pipeline_dir(target_dir)
+
+    for source in sorted(MANAGER_OUTPUT_DIR.iterdir()):
+        if source.name.endswith("_federation_input.json") and source.name != federation_input.name:
+            continue
+
+        target = target_dir / source.name
+        if source.is_dir() and not source.is_symlink():
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
+
+    saved_federation_input = target_dir / federation_input.name
+    print(f"Saved digital-twin-manager deployment artifact: {relative_to_repo(saved_federation_input)}")
+    return saved_federation_input
+
+
+def required_twins_from_fedtwin(fedtwin_path: Path) -> list[str]:
+    fedtwin_path = resolve_repo_path(fedtwin_path)
+    if not fedtwin_path.is_file():
+        fail(f"Missing fed-sysml config file: {relative_to_repo(fedtwin_path)}")
+
+    try:
+        data = json.loads(fedtwin_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"fed-sysml config is not valid JSON: {relative_to_repo(fedtwin_path)} ({error})")
+
+    if not isinstance(data, dict):
+        fail(f"fed-sysml config root must be an object: {relative_to_repo(fedtwin_path)}")
+
+    fed_twins = data.get("fedTwins")
+    if not isinstance(fed_twins, list):
+        fail("fed-sysml config field 'fedTwins' must be a list.")
+
+    required: list[str] = []
+    seen: set[str] = set()
+    for fed_twin_index, fed_twin in enumerate(fed_twins):
+        if not isinstance(fed_twin, dict):
+            fail(f"fed-sysml config field 'fedTwins[{fed_twin_index}]' must be an object.")
+
+        new_strategies = fed_twin.get("newStrategies", [])
+        if not isinstance(new_strategies, list):
+            fail(f"fed-sysml config field 'fedTwins[{fed_twin_index}].newStrategies' must be a list.")
+
+        for new_strategy_index, new_strategy in enumerate(new_strategies):
+            if not isinstance(new_strategy, dict):
+                fail(
+                    "fed-sysml config field "
+                    f"'fedTwins[{fed_twin_index}].newStrategies[{new_strategy_index}]' must be an object."
+                )
+
+            strategy_refs = new_strategy.get("strategies", [])
+            if not isinstance(strategy_refs, list):
+                fail(
+                    "fed-sysml config field "
+                    f"'fedTwins[{fed_twin_index}].newStrategies[{new_strategy_index}].strategies' must be a list."
+                )
+
+            for strategy_ref_index, strategy_ref in enumerate(strategy_refs):
+                context = (
+                    f"fedTwins[{fed_twin_index}].newStrategies[{new_strategy_index}]"
+                    f".strategies[{strategy_ref_index}]"
+                )
+                if not isinstance(strategy_ref, str):
+                    fail(f"fed-sysml strategy reference '{context}' must be a string in the form 'Twin.strategy'.")
+
+                parts = strategy_ref.split(".")
+                if len(parts) != 2 or not parts[0] or not parts[1]:
+                    fail(
+                        f"Invalid fed-sysml strategy reference '{strategy_ref}' at {context}. "
+                        "Expected 'Twin.strategy'."
+                    )
+
+                twin_name = parts[0]
+                if twin_name not in seen:
+                    seen.add(twin_name)
+                    required.append(twin_name)
+
+    if not required:
+        fail(f"No fed-sysml strategy references found in {relative_to_repo(fedtwin_path)}")
+    return required
+
+
 def stage_federation_inputs() -> list[Path]:
+    return stage_federation_inputs_from_deployments()
+
+
+def stage_federation_inputs_from_deployments() -> list[Path]:
     for file_name in ("fedtwin.json", "brokerConfig.json"):
         config_file = FEDERATION_INPUT_DIR / file_name
         if not config_file.is_file():
             fail(f"Missing fed-sysml config file: {relative_to_repo(config_file)}")
 
-    source_files = sorted(MANAGER_OUTPUT_DIR.glob("*_federation_input.json"))
-    if not source_files:
-        fail(f"No federation input files found under {relative_to_repo(MANAGER_OUTPUT_DIR)}")
-
+    required_twins = required_twins_from_fedtwin(FEDERATION_INPUT_DIR / "fedtwin.json")
     target_dir = FEDERATION_INPUT_DIR / "strategyInputs"
-    ensure_dir(target_dir)
+    clean_pipeline_dir(target_dir)
 
     staged_files: list[Path] = []
-    for source in source_files:
+    for twin_name in required_twins:
+        source = MANAGER_DEPLOYMENTS_DIR / twin_name / f"{twin_name}_federation_input.json"
+        if not source.is_file():
+            fail(
+                f"Missing saved federation input for twin '{twin_name}'. "
+                f"Expected {relative_to_repo(source)}. "
+                "Deploy that digital twin first so its artifact is saved."
+            )
+
         target = target_dir / source.name
         shutil.copy2(source, target)
         staged_files.append(target)
