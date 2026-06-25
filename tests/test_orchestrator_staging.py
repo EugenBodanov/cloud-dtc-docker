@@ -135,10 +135,11 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.write_sysml_v1_export(source)
         (self.profile_v1_output / "stale.txt").write_text("old", encoding="utf-8")
 
-        container_input, used_files = staging.select_staged_converter_input("v1", clean_output=True)
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input("v1", clean_output=True)
 
         self.assertEqual(container_input, "/pipeline/input/model.xml")
         self.assertEqual(used_files, [source])
+        self.assertIsNone(input_host_dir)
         self.assertFalse((self.profile_v1_output / "stale.txt").exists())
 
     def test_select_staged_converter_input_v1_rejects_multiple_xml_xmi(self) -> None:
@@ -152,10 +153,29 @@ class OrchestratorStagingTests(unittest.TestCase):
         source = self.profile_v2_input / "model.sysml"
         source.write_text("package Demo {}", encoding="utf-8")
 
-        container_input, used_files = staging.select_staged_converter_input("v2", clean_output=True)
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input("v2", clean_output=True)
 
         self.assertIsNone(container_input)
         self.assertEqual(used_files, [source])
+        self.assertIsNone(input_host_dir)
+
+    def test_select_staged_converter_input_v2_can_prepare_selected_run_input(self) -> None:
+        first = self.profile_v2_input / "first.sysml"
+        second = self.profile_v2_input / "second.sysml"
+        first.write_text("package First {}", encoding="utf-8")
+        second.write_text("package Second {}", encoding="utf-8")
+
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input(
+            "v2",
+            clean_output=True,
+            selected_input=second,
+        )
+
+        self.assertIsNone(container_input)
+        self.assertEqual(used_files, [second])
+        self.assertEqual(input_host_dir, self.profile_v2_input.parent / "run-input")
+        self.assertTrue((input_host_dir / "second.sysml").is_file())
+        self.assertFalse((input_host_dir / "first.sysml").exists())
 
     def test_select_staged_converter_input_v2_rejects_xml(self) -> None:
         self.write_sysml_v1_export(self.profile_v2_input / "model.xml")

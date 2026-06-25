@@ -77,7 +77,9 @@ services:
       SYSML_KERNEL_CONTAINER: "sysml-kernel-container"
       DTP_PATH_MAP: "${DTP_PATH_MAP:-}"
     volumes:
-      - ./pipeline/digital-twin-profile-sysml-v2/input:/pipeline/input
+      - type: bind
+        source: ${DTP_V2_INPUT_HOST_DIR:-./pipeline/digital-twin-profile-sysml-v2/input}
+        target: /pipeline/input
       - ./pipeline/digital-twin-profile-sysml-v2/output:/pipeline/output
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind

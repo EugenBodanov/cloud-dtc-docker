@@ -120,7 +120,7 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
     run_federation_stage(config)
 
 
-def run_staged_converter_stage(config: PipelineConfig, *, converter: str) -> None:
+def run_staged_converter_stage(config: PipelineConfig, *, converter: str, selected_input: Path | None = None) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
@@ -128,9 +128,10 @@ def run_staged_converter_stage(config: PipelineConfig, *, converter: str) -> Non
     print(f"\nConverter: {converter_label(converter)}")
     print(f"Docker Compose file: {relative_to_repo(compose_file)}")
 
-    container_input_file, used_model_files = select_staged_converter_input(
+    container_input_file, used_model_files, input_host_dir = select_staged_converter_input(
         converter,
         clean_output=config.clean_stage,
+        selected_input=selected_input,
     )
     print_file_listing(f"staged {converter_label(converter)} input", used_model_files)
     if converter == "v2":
@@ -145,6 +146,7 @@ def run_staged_converter_stage(config: PipelineConfig, *, converter: str) -> Non
         path_maps=config.path_maps,
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
+        input_host_dir=input_host_dir,
     )
 
     generated_twin_dir = config.generated_twin_dir

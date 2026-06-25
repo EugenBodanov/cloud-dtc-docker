@@ -23,7 +23,7 @@ from .pipeline import (
     run_staged_converter_stage,
 )
 from .pipeline_paths import converter_label, relative_to_repo, resolve_repo_path
-from .staging import list_manager_deployments, list_simulator_states
+from .staging import list_manager_deployments, list_simulator_states, list_staged_converter_inputs
 from .user_input import UserInput
 
 
@@ -140,7 +140,7 @@ def run_app(options: LaunchOptions) -> None:
         user_input.start()
 
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
-        print("Type 'continue sysml-v1' or 'continue sysml-v2' to run a staged converter input.")
+        print("Type 'continue sysml-v1' or 'continue sysml-v2 [file]' to run a staged converter input.")
         print("Type 'continue digital-twin-manager [name]' to deploy a saved digital twin input.")
         print("Type 'destroy digital-twin-manager [name]' to destroy a saved digital twin deployment.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
@@ -262,9 +262,13 @@ def _run_digital_twin_manager_destroy_safely(config: PipelineConfig, deployment_
         return False
 
 
-def _run_staged_converter_safely(config: PipelineConfig, converter: str) -> bool:
+def _run_staged_converter_safely(
+    config: PipelineConfig,
+    converter: str,
+    selected_input: Path | None = None,
+) -> bool:
     try:
-        run_staged_converter_stage(config, converter=converter)
+        run_staged_converter_stage(config, converter=converter, selected_input=selected_input)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
@@ -439,6 +443,47 @@ def _select_running_simulator(user_input: UserInput, requested_name: str | None)
         print("Selection: ", end="", flush=True)
 
 
+def _select_staged_sysml_v2_input(user_input: UserInput, requested_file: str | None) -> Path | None:
+    sources = list_staged_converter_inputs("v2")
+    if not sources:
+        print("No staged sysml-v2 .sysml inputs found in pipeline/digital-twin-profile-sysml-v2/input.")
+        return None
+
+    if requested_file:
+        resolved = _resolve_staged_file_selection(requested_file, sources)
+        if resolved:
+            return resolved
+        _print_unknown_staged_file(requested_file, sources)
+        return None
+
+    if len(sources) == 1:
+        print(f"Using staged sysml-v2 input: {relative_to_repo(sources[0])}")
+        return sources[0]
+
+    print("\nStaged sysml-v2 inputs:")
+    for index, source in enumerate(sources, start=1):
+        print(f"{index}. {source.name}")
+
+    print("Select sysml-v2 input by number or file name [exit to cancel]: ", end="", flush=True)
+    while True:
+        line = user_input.get_line(timeout=None)
+        if line is None:
+            continue
+        answer = line.strip()
+        if _is_exit(answer.lower()):
+            raise StopRequested
+        if not answer:
+            print("Please enter an input number, file name, or 'exit': ", end="", flush=True)
+            continue
+
+        resolved = _resolve_staged_file_selection(answer, sources)
+        if resolved:
+            return resolved
+
+        _print_unknown_staged_file(answer, sources, prefix="Please choose an available sysml-v2 input")
+        print("Selection: ", end="", flush=True)
+
+
 def _resolve_manager_deployment_selection(selection: str, deployments: list[str]) -> str | None:
     if selection.isdigit():
         index = int(selection)
@@ -456,9 +501,47 @@ def _resolve_manager_deployment_selection(selection: str, deployments: list[str]
     return None
 
 
+def _resolve_staged_file_selection(selection: str, sources: list[Path]) -> Path | None:
+    if selection.isdigit():
+        index = int(selection)
+        if 1 <= index <= len(sources):
+            return sources[index - 1]
+        return None
+
+    exact = [
+        source
+        for source in sources
+        if source.name == selection or str(source) == selection or relative_to_repo(source) == selection
+    ]
+    if len(exact) == 1:
+        return exact[0]
+
+    folded_selection = selection.casefold()
+    folded = [
+        source
+        for source in sources
+        if source.name.casefold() == folded_selection
+        or str(source).casefold() == folded_selection
+        or relative_to_repo(source).casefold() == folded_selection
+    ]
+    if len(folded) == 1:
+        return folded[0]
+    return None
+
+
 def _print_unknown_deployment(selection: str, deployments: list[str], *, prefix: str = "Unknown digital twin deployment") -> None:
     available = ", ".join(deployments)
     print(f"{prefix} '{selection}'. Available deployments: {available}")
+
+
+def _print_unknown_staged_file(
+    selection: str,
+    sources: list[Path],
+    *,
+    prefix: str = "Unknown staged sysml-v2 input",
+) -> None:
+    available = ", ".join(source.name for source in sources)
+    print(f"{prefix} '{selection}'. Available inputs: {available}")
 
 
 def _handle_command(config: PipelineConfig, command: str, user_input: UserInput) -> None:
@@ -493,14 +576,19 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
     converter, converter_target = _sysml_profile_command_target(command_text)
     if converter:
         label = converter_label(converter)
-        if converter_target:
+        selected_input = None
+        if converter == "v1" and converter_target:
             print(
-                "SysML profile converter commands use staged input and do not take a target/path. "
+                "SysML v1 converter commands use staged input and do not take a target/path. "
                 f"Use 'continue {label}'."
             )
             return
+        if converter == "v2":
+            selected_input = _select_staged_sysml_v2_input(user_input, converter_target)
+            if selected_input is None:
+                return
         print(f"Continuing from {label} staged input.")
-        converter_succeeded = _run_staged_converter_safely(config, converter)
+        converter_succeeded = _run_staged_converter_safely(config, converter, selected_input)
         if not converter_succeeded:
             return
         run_manager = _prompt_yes_no(user_input, f"Run digital-twin-manager after {label}? [y/N] ")
@@ -719,7 +807,7 @@ def _is_stop_local_grafana(value: str) -> bool:
 def _print_commands() -> None:
     print("Available commands:")
     print("- continue sysml-v1              Run staged digital-twin-profile-sysml-v1 input.")
-    print("- continue sysml-v2              Run staged digital-twin-profile-sysml-v2 input.")
+    print("- continue sysml-v2 [file]       Run one staged digital-twin-profile-sysml-v2 input.")
     print("- continue digital-twin-manager [name]  Deploy a saved digital-twin-manager input.")
     print("- destroy digital-twin-manager [name]   Destroy a saved digital-twin-manager deployment.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")

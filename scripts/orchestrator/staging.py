@@ -76,7 +76,20 @@ def stage_converter_input(converter: str, source: Path, *, clean_stage: bool) ->
     return None, staged_files
 
 
-def select_staged_converter_input(converter: str, *, clean_output: bool) -> tuple[str | None, list[Path]]:
+def list_staged_converter_inputs(converter: str) -> list[Path]:
+    input_dir = PROFILE_INPUT_DIRS[converter]
+    ensure_dir(input_dir)
+    if converter == "v1":
+        return _files_with_suffixes(input_dir, ".xmi", ".xml")
+    return _files_with_suffixes(input_dir, ".sysml")
+
+
+def select_staged_converter_input(
+    converter: str,
+    *,
+    clean_output: bool,
+    selected_input: Path | None = None,
+) -> tuple[str | None, list[Path], Path | None]:
     input_dir = PROFILE_INPUT_DIRS[converter]
     output_dir = PROFILE_OUTPUT_DIRS[converter]
 
@@ -89,9 +102,15 @@ def select_staged_converter_input(converter: str, *, clean_output: bool) -> tupl
     if converter == "v1":
         source = _select_staged_sysml_v1_input(input_dir)
         validate_sysml_v1_export(source)
-        return f"/pipeline/input/{source.name}", [source]
+        return f"/pipeline/input/{source.name}", [source], None
 
-    return None, _select_staged_sysml_v2_inputs(input_dir)
+    sources = _select_staged_sysml_v2_inputs(input_dir)
+    if selected_input is None:
+        return None, sources, None
+
+    source = _resolve_staged_sysml_v2_input(input_dir, selected_input, sources)
+    run_input_dir = _prepare_staged_sysml_v2_run_input(input_dir, source)
+    return None, [source], run_input_dir
 
 
 def find_converter_output(converter: str, *, generated_twin_dir: str | None) -> Path:
@@ -792,6 +811,25 @@ def _select_staged_sysml_v2_inputs(input_dir: Path) -> list[Path]:
         f"No .sysml files found in {relative_to_repo(input_dir)}. "
         "SysML v2 parser reads .sysml text files only."
     )
+
+
+def _resolve_staged_sysml_v2_input(input_dir: Path, selected_input: Path, sources: list[Path]) -> Path:
+    selected = selected_input if selected_input.is_absolute() else input_dir / selected_input
+    resolved = selected.resolve()
+    for source in sources:
+        if source.resolve() == resolved:
+            return source
+    names = ", ".join(relative_to_repo(path) for path in sources) or "none"
+    fail(f"Selected SysML v2 staged input is not available: {relative_to_repo(selected)}. Available: {names}")
+
+
+def _prepare_staged_sysml_v2_run_input(input_dir: Path, source: Path) -> Path:
+    run_input_dir = input_dir.parent / "run-input"
+    clean_pipeline_dir(run_input_dir)
+    target = run_input_dir / source.name
+    shutil.copy2(source, target)
+    print(f"Prepared SysML v2 run input: {relative_to_repo(target)}")
+    return run_input_dir
 
 
 def _latest_config_mtime(path: Path) -> float:
