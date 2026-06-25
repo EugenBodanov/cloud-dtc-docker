@@ -28,10 +28,13 @@ from .pipeline_paths import (
 )
 from .errors import fail
 from .staging import (
+    allocate_simulator_host_port,
     clean_pipeline_dir,
     copy_configs_to_manager,
+    delete_simulator_state,
     find_converter_output,
     has_config_set,
+    list_simulator_states,
     prepare_manager_stage,
     prepare_federation_stage,
     print_file_listing,
@@ -39,11 +42,15 @@ from .staging import (
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
+    read_simulator_state,
+    require_manager_deployment_simulator_input,
     restore_manager_deployment_input,
     save_manager_deployment_input,
     save_manager_deployment_output,
+    simulator_project_name,
     stage_converter_input,
     stage_federation_inputs_from_deployments,
+    write_simulator_state,
 )
 
 
@@ -169,41 +176,63 @@ def _require_manager_input() -> None:
         )
 
 
-def run_cloud_deployer_test_simulator_stage(config: PipelineConfig) -> None:
+def start_cloud_deployer_test_simulator_stage(config: PipelineConfig, deployment_name: str) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
 
-    simulator_inputs = [MANAGER_INPUT_DIR / file_name for file_name in SIMULATOR_CONFIG_FILES]
-    missing_inputs = [path for path in simulator_inputs if not path.is_file()]
-    if missing_inputs:
-        missing = ", ".join(relative_to_repo(path) for path in missing_inputs)
-        fail(
-            "cloud-deployer-test-simulator input is missing or incomplete. "
-            f"Run the pipeline first so configs are staged in {relative_to_repo(MANAGER_INPUT_DIR)}. "
-            f"Missing: {missing}"
-        )
+    input_dir = require_manager_deployment_simulator_input(deployment_name)
+    simulator_inputs = [input_dir / file_name for file_name in SIMULATOR_CONFIG_FILES]
+    state = read_simulator_state(deployment_name)
+    if state:
+        project_name = str(state["project_name"])
+        host_port = int(state["host_port"])
+    else:
+        project_name = simulator_project_name(deployment_name)
+        host_port = allocate_simulator_host_port()
 
     print_file_listing("cloud-deployer-test-simulator input", simulator_inputs)
     start_cloud_deployer_test_simulator(
         compose_file=compose_file,
         profiles=config.compose_profiles,
+        project_name=project_name,
+        input_dir=input_dir,
+        host_port=host_port,
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
-    print("\ncloud-deployer-test-simulator is running at http://127.0.0.1:5000")
+    state = write_simulator_state(
+        deployment_name,
+        project_name=project_name,
+        host_port=host_port,
+        input_dir=input_dir,
+    )
+    print(f"\ncloud-deployer-test-simulator for {state['digital_twin_name']} is running at {state['url']}")
 
 
-def remove_cloud_deployer_test_simulator_stage(config: PipelineConfig) -> None:
+def remove_cloud_deployer_test_simulator_stage(config: PipelineConfig, deployment_name: str) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
 
+    state = read_simulator_state(deployment_name)
+    project_name = str(state["project_name"]) if state else simulator_project_name(deployment_name)
     remove_cloud_deployer_test_simulator(
         compose_file=compose_file,
         profiles=config.compose_profiles,
+        project_name=project_name,
         show_container_logs=config.show_container_logs,
     )
+    delete_simulator_state(deployment_name)
+
+
+def remove_all_cloud_deployer_test_simulators_stage(config: PipelineConfig) -> None:
+    states = list_simulator_states()
+    if not states:
+        return
+
+    for state in states:
+        remove_cloud_deployer_test_simulator_stage(config, str(state["digital_twin_name"]))
 
 
 def run_federation_stage(config: PipelineConfig) -> None:

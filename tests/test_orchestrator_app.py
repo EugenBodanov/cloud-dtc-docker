@@ -49,6 +49,42 @@ class OrchestratorAppCommandTests(unittest.TestCase):
         self.assertEqual(app._resolve_manager_deployment_selection("pv", deployments), "PV")
         self.assertIsNone(app._resolve_manager_deployment_selection("Unknown", deployments))
 
+    def test_start_simulator_target_preserves_case(self) -> None:
+        matched, target = app._simulator_command_target(
+            "start simulator PV",
+            app.START_SIMULATOR_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertEqual(target, "PV")
+
+    def test_stop_simulator_target_preserves_case(self) -> None:
+        matched, target = app._simulator_command_target(
+            "stop simulator Battery",
+            app.STOP_SIMULATOR_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertEqual(target, "Battery")
+
+    def test_start_simulator_without_target_matches_menu_mode(self) -> None:
+        matched, target = app._simulator_command_target(
+            "start simulator",
+            app.START_SIMULATOR_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertIsNone(target)
+
+    def test_simulator_target_can_contain_hyphens(self) -> None:
+        matched, target = app._simulator_command_target(
+            "stop simulator dtc-y-03",
+            app.STOP_SIMULATOR_ALIASES,
+        )
+
+        self.assertTrue(matched)
+        self.assertEqual(target, "dtc-y-03")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -254,6 +254,28 @@ continue digital-twin-manager PV
 destroy digital-twin-manager Battery
 ```
 
+Simulator instances also use saved deployment inputs. Each selected twin starts
+as its own Docker Compose project, with an automatically assigned host port
+starting at `5000`. The orchestrator stores the runtime state in:
+
+```text
+pipeline/digital-twin-manager/deployments/<digital_twin_name>/simulator.json
+```
+
+Without an argument, `start simulator` shows saved deployments and
+`stop simulator` shows running simulator instances. You can also select a twin
+directly:
+
+```text
+start simulator PV
+start simulator Battery
+stop simulator PV
+stop simulator Battery
+```
+
+For example, `PV` may run at `http://127.0.0.1:5000` while `Battery` runs at
+`http://127.0.0.1:5001`.
+
 The federation stage is still separate. When you type:
 
 ```text

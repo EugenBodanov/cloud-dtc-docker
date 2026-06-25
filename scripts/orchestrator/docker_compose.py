@@ -7,10 +7,19 @@ from .errors import fail
 from .pipeline_paths import FEDERATION_TERRAFORM_PLAN_FILE, PROFILE_SERVICES, relative_to_repo
 
 INFRASTRUCTURE_SERVICES = ("enterprise-architect", "sysml-kernel")
+SIMULATOR_SERVICE = "cloud-deployer-test-simulator"
 
 
-def compose_command(compose_file: Path, profiles: tuple[str, ...] = ()) -> list[str]:
-    command = ["docker", "compose", "-f", str(compose_file)]
+def compose_command(
+    compose_file: Path,
+    profiles: tuple[str, ...] = (),
+    *,
+    project_name: str | None = None,
+) -> list[str]:
+    command = ["docker", "compose"]
+    if project_name:
+        command.extend(["--project-name", project_name])
+    command.extend(["-f", str(compose_file)])
     for profile in profiles:
         command.extend(["--profile", profile])
     return command
@@ -224,29 +233,48 @@ def start_cloud_deployer_test_simulator(
     *,
     compose_file: Path,
     profiles: tuple[str, ...],
+    project_name: str,
+    input_dir: Path,
+    host_port: int,
     build_images: bool,
     show_container_logs: bool,
 ) -> None:
-    command = compose_command(compose_file, with_profiles(profiles, "simulator")) + ["up", "-d"]
+    command = compose_command(
+        compose_file,
+        with_profiles(profiles, "simulator"),
+        project_name=project_name,
+    ) + ["up", "-d"]
     if build_images:
         command.append("--build")
-    command.append("cloud-deployer-test-simulator")
-    run_command(command, show_output=show_container_logs)
+    command.append(SIMULATOR_SERVICE)
+    run_command(
+        command,
+        show_output=show_container_logs,
+        env={
+            "SIMULATOR_INPUT_HOST_DIR": input_dir.resolve().as_posix(),
+            "SIMULATOR_HOST_PORT": str(host_port),
+        },
+    )
 
 
 def remove_cloud_deployer_test_simulator(
     *,
     compose_file: Path,
     profiles: tuple[str, ...],
+    project_name: str,
     show_container_logs: bool,
 ) -> None:
     print("\nRemoving cloud-deployer-test-simulator container:")
-    print("- cloud-deployer-test-simulator")
+    print(f"- {SIMULATOR_SERVICE} ({project_name})")
 
-    command = compose_command(compose_file, with_profiles(profiles, "simulator")) + [
+    command = compose_command(
+        compose_file,
+        with_profiles(profiles, "simulator"),
+        project_name=project_name,
+    ) + [
         "rm",
         "--force",
         "--stop",
-        "cloud-deployer-test-simulator",
+        SIMULATOR_SERVICE,
     ]
     run_command(command, show_output=show_container_logs)

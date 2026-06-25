@@ -8,9 +8,10 @@ from .config import PipelineConfig, load_pipeline_config, print_run_config
 from .docker_compose import remove_infrastructure, start_infrastructure
 from .file_watcher import FileChange, OutputFileWatcher
 from .pipeline import (
+    remove_all_cloud_deployer_test_simulators_stage,
     remove_cloud_deployer_test_simulator_stage,
     run_digital_twin_manager_destroy_stage,
-    run_cloud_deployer_test_simulator_stage,
+    start_cloud_deployer_test_simulator_stage,
     run_digital_twin_manager_stage,
     run_fed_sysml_terraform_apply_saved_plan_stage,
     run_fed_sysml_terraform_plan_stage,
@@ -19,7 +20,7 @@ from .pipeline import (
     run_pipeline,
 )
 from .pipeline_paths import relative_to_repo, resolve_repo_path
-from .staging import list_manager_deployments
+from .staging import list_manager_deployments, list_simulator_states
 from .user_input import UserInput
 
 
@@ -50,6 +51,33 @@ DESTROY_DIGITAL_TWIN_MANAGER_ALIASES = (
     ["digital", "twin", "manager", "destroy"],
     ["destroy", "deployed", "digital", "twin"],
     ["destroy", "deployed", "digital", "twin", "manager"],
+)
+
+START_SIMULATOR_ALIASES = (
+    ["simulator"],
+    ["test", "simulator"],
+    ["cloud", "deployer", "test", "simulator"],
+    ["cloud", "deployer", "simulator"],
+    ["start", "simulator"],
+    ["start", "test", "simulator"],
+    ["start", "cloud", "deployer", "test", "simulator"],
+    ["run", "simulator"],
+    ["run", "test", "simulator"],
+    ["run", "cloud", "deployer", "test", "simulator"],
+    ["continue", "simulator"],
+    ["continue", "test", "simulator"],
+    ["continue", "cloud", "deployer", "test", "simulator"],
+)
+
+STOP_SIMULATOR_ALIASES = (
+    ["stop", "simulator"],
+    ["stop", "test", "simulator"],
+    ["stop", "cloud", "deployer", "test", "simulator"],
+    ["stop", "cloud", "deployer", "simulator"],
+    ["remove", "simulator"],
+    ["remove", "test", "simulator"],
+    ["remove", "cloud", "deployer", "test", "simulator"],
+    ["remove", "cloud", "deployer", "simulator"],
 )
 
 
@@ -86,8 +114,8 @@ def run_app(options: LaunchOptions) -> None:
         print("Type 'fed terraform plan' to plan the generated fed-sysml Terraform output.")
         print("Type 'fed terraform apply' to apply the generated fed-sysml Terraform output.")
         print("Type 'fed terraform destroy' to destroy the fed-sysml Terraform resources.")
-        print("Type 'start simulator' to start cloud-deployer-test-simulator.")
-        print("Type 'stop simulator' to stop and remove cloud-deployer-test-simulator.")
+        print("Type 'start simulator [name]' to start cloud-deployer-test-simulator for a saved digital twin.")
+        print("Type 'stop simulator [name]' to stop and remove a running cloud-deployer-test-simulator.")
         print("Type 'exit' and press Enter to stop.")
         if config.auto_run:
             print("Auto-run is enabled.")
@@ -229,9 +257,9 @@ def _run_fed_sysml_terraform_apply_saved_plan_safely(config: PipelineConfig) -> 
         return False
 
 
-def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
+def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig, deployment_name: str) -> bool:
     try:
-        run_cloud_deployer_test_simulator_stage(config)
+        start_cloud_deployer_test_simulator_stage(config, deployment_name)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
@@ -239,9 +267,12 @@ def _run_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
         return False
 
 
-def _remove_cloud_deployer_test_simulator_safely(config: PipelineConfig) -> bool:
+def _remove_cloud_deployer_test_simulator_safely(config: PipelineConfig, deployment_name: str | None = None) -> bool:
     try:
-        remove_cloud_deployer_test_simulator_stage(config)
+        if deployment_name is None:
+            remove_all_cloud_deployer_test_simulators_stage(config)
+        else:
+            remove_cloud_deployer_test_simulator_stage(config, deployment_name)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
@@ -302,6 +333,44 @@ def _select_manager_deployment(user_input: UserInput, requested_name: str | None
             return resolved
 
         _print_unknown_deployment(answer, deployments, prefix="Please choose an available deployment")
+        print("Selection: ", end="", flush=True)
+
+
+def _select_running_simulator(user_input: UserInput, requested_name: str | None) -> str | None:
+    states = list_simulator_states()
+    deployments = [str(state["digital_twin_name"]) for state in states]
+    if not deployments:
+        print("No running cloud-deployer-test-simulator instances found.")
+        return None
+
+    if requested_name:
+        resolved = _resolve_manager_deployment_selection(requested_name, deployments)
+        if resolved:
+            return resolved
+        _print_unknown_deployment(requested_name, deployments, prefix="Unknown running simulator")
+        return None
+
+    print("\nRunning cloud-deployer-test-simulator instances:")
+    for index, state in enumerate(states, start=1):
+        print(f"{index}. {state['digital_twin_name']} ({state['url']})")
+
+    print("Select simulator by number or digital twin name [exit to cancel]: ", end="", flush=True)
+    while True:
+        line = user_input.get_line(timeout=None)
+        if line is None:
+            continue
+        answer = line.strip()
+        if _is_exit(answer.lower()):
+            raise StopRequested
+        if not answer:
+            print("Please enter a simulator number, digital twin name, or 'exit': ", end="", flush=True)
+            continue
+
+        resolved = _resolve_manager_deployment_selection(answer, deployments)
+        if resolved:
+            return resolved
+
+        _print_unknown_deployment(answer, deployments, prefix="Please choose a running simulator")
         print("Selection: ", end="", flush=True)
 
 
@@ -388,13 +457,21 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         print(f"Destroying digital-twin-manager deployment: {deployment_name}")
         _run_digital_twin_manager_destroy_safely(config, deployment_name)
         return
-    if _is_start_cloud_deployer_test_simulator(value):
-        print("Starting cloud-deployer-test-simulator.")
-        _run_cloud_deployer_test_simulator_safely(config)
+    is_start_simulator, requested_deployment = _simulator_command_target(command_text, START_SIMULATOR_ALIASES)
+    if is_start_simulator:
+        deployment_name = _select_manager_deployment(user_input, requested_deployment)
+        if not deployment_name:
+            return
+        print(f"Starting cloud-deployer-test-simulator for deployment: {deployment_name}")
+        _run_cloud_deployer_test_simulator_safely(config, deployment_name)
         return
-    if _is_stop_cloud_deployer_test_simulator(value):
-        print("Stopping cloud-deployer-test-simulator.")
-        _remove_cloud_deployer_test_simulator_safely(config)
+    is_stop_simulator, requested_deployment = _simulator_command_target(command_text, STOP_SIMULATOR_ALIASES)
+    if is_stop_simulator:
+        deployment_name = _select_running_simulator(user_input, requested_deployment)
+        if not deployment_name:
+            return
+        print(f"Stopping cloud-deployer-test-simulator for deployment: {deployment_name}")
+        _remove_cloud_deployer_test_simulator_safely(config, deployment_name)
         return
 
     if value in ("help", "?"):
@@ -404,6 +481,20 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
 
 
 def _digital_twin_manager_command_target(
+    command: str,
+    aliases: tuple[list[str], ...],
+) -> tuple[bool, str | None]:
+    return _command_target(command, aliases)
+
+
+def _simulator_command_target(
+    command: str,
+    aliases: tuple[list[str], ...],
+) -> tuple[bool, str | None]:
+    return _command_target(command, aliases)
+
+
+def _command_target(
     command: str,
     aliases: tuple[list[str], ...],
 ) -> tuple[bool, str | None]:
@@ -480,36 +571,13 @@ def _is_destroy_digital_twin_manager(value: str) -> bool:
 
 
 def _is_start_cloud_deployer_test_simulator(value: str) -> bool:
-    tokens = value.replace("-", " ").replace("_", " ").split()
-    return tokens in (
-        ["simulator"],
-        ["test", "simulator"],
-        ["cloud", "deployer", "test", "simulator"],
-        ["cloud", "deployer", "simulator"],
-        ["start", "simulator"],
-        ["start", "test", "simulator"],
-        ["start", "cloud", "deployer", "test", "simulator"],
-        ["run", "simulator"],
-        ["run", "test", "simulator"],
-        ["run", "cloud", "deployer", "test", "simulator"],
-        ["continue", "simulator"],
-        ["continue", "test", "simulator"],
-        ["continue", "cloud", "deployer", "test", "simulator"],
-    )
+    matched, _ = _simulator_command_target(value, START_SIMULATOR_ALIASES)
+    return matched
 
 
 def _is_stop_cloud_deployer_test_simulator(value: str) -> bool:
-    tokens = value.replace("-", " ").replace("_", " ").split()
-    return tokens in (
-        ["stop", "simulator"],
-        ["stop", "test", "simulator"],
-        ["stop", "cloud", "deployer", "test", "simulator"],
-        ["stop", "cloud", "deployer", "simulator"],
-        ["remove", "simulator"],
-        ["remove", "test", "simulator"],
-        ["remove", "cloud", "deployer", "test", "simulator"],
-        ["remove", "cloud", "deployer", "simulator"],
-    )
+    matched, _ = _simulator_command_target(value, STOP_SIMULATOR_ALIASES)
+    return matched
 
 
 def _print_commands() -> None:
@@ -520,8 +588,8 @@ def _print_commands() -> None:
     print("- fed terraform plan  Run Terraform init and plan for generated fed-sysml output.")
     print("- fed terraform apply  Run Terraform init, plan, and apply for generated fed-sysml output.")
     print("- fed terraform destroy  Destroy fed-sysml Terraform resources.")
-    print("- start simulator     Start cloud-deployer-test-simulator using staged manager input.")
-    print("- stop simulator      Stop and remove cloud-deployer-test-simulator.")
+    print("- start simulator [name]  Start cloud-deployer-test-simulator for a saved digital twin.")
+    print("- stop simulator [name]   Stop and remove a running cloud-deployer-test-simulator.")
     print("- exit                Stop the watcher.")
 
 

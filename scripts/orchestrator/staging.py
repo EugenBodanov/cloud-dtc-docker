@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import shutil
+import socket
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -15,6 +18,7 @@ from .pipeline_paths import (
     PIPELINE_ROOT,
     PROFILE_INPUT_DIRS,
     PROFILE_OUTPUT_DIRS,
+    SIMULATOR_CONFIG_FILES,
     FEDERATION_INPUT_DIR,
     FEDERATION_OUTPUT_DIR,
     relative_to_repo,
@@ -28,6 +32,10 @@ FEDERATION_TERRAFORM_STATE_ENTRIES = {
     "terraform.tfstate",
     "terraform.tfstate.backup",
 }
+SIMULATOR_STATE_FILE = "simulator.json"
+SIMULATOR_PORT_START = 5000
+SIMULATOR_PORT_END = 5999
+SimulatorState = dict[str, str | int]
 
 
 def clean_pipeline_dir(path: Path) -> None:
@@ -239,6 +247,107 @@ def resolve_manager_deployment_name(twin_name: str) -> str:
     fail(f"Unknown digital twin deployment '{twin_name}'. Available deployments: {available}")
 
 
+def require_manager_deployment_simulator_input(twin_name: str) -> Path:
+    deployment_name = resolve_manager_deployment_name(twin_name)
+    input_dir = MANAGER_DEPLOYMENTS_DIR / deployment_name / "input"
+    missing_inputs = [input_dir / file_name for file_name in SIMULATOR_CONFIG_FILES if not (input_dir / file_name).is_file()]
+    if missing_inputs:
+        missing = ", ".join(relative_to_repo(path) for path in missing_inputs)
+        fail(
+            f"cloud-deployer-test-simulator input for twin '{deployment_name}' is missing or incomplete. "
+            f"Expected saved deployment input in {relative_to_repo(input_dir)}. "
+            f"Missing: {missing}"
+        )
+    return input_dir
+
+
+def simulator_project_name(twin_name: str) -> str:
+    if not twin_name:
+        fail("Digital twin deployment name must be a non-empty string.")
+
+    slug = re.sub(r"[^a-z0-9]+", "-", twin_name.casefold()).strip("-")
+    if not slug:
+        slug = "twin"
+    digest = hashlib.sha256(twin_name.encode("utf-8")).hexdigest()[:8]
+    return f"cloud-dtc-simulator-{slug}-{digest}"
+
+
+def allocate_simulator_host_port(
+    *,
+    start: int = SIMULATOR_PORT_START,
+    end: int = SIMULATOR_PORT_END,
+) -> int:
+    used_ports = {
+        int(state["host_port"])
+        for state in list_simulator_states()
+        if isinstance(state.get("host_port"), int)
+    }
+
+    for port in range(start, end + 1):
+        if port in used_ports:
+            continue
+        if _is_local_port_available(port):
+            return port
+
+    fail(f"No available simulator host port found in range {start}-{end}.")
+
+
+def list_simulator_states() -> list[SimulatorState]:
+    if not MANAGER_DEPLOYMENTS_DIR.is_dir():
+        return []
+
+    states: list[SimulatorState] = []
+    for state_file in sorted(MANAGER_DEPLOYMENTS_DIR.glob(f"*/{SIMULATOR_STATE_FILE}")):
+        states.append(_load_simulator_state(state_file))
+    return sorted(states, key=lambda state: str(state["digital_twin_name"]).casefold())
+
+
+def read_simulator_state(twin_name: str) -> SimulatorState | None:
+    if not twin_name:
+        fail("Digital twin deployment name must be a non-empty string.")
+
+    for state in list_simulator_states():
+        state_name = str(state["digital_twin_name"])
+        if state_name == twin_name or state_name.casefold() == twin_name.casefold():
+            return state
+    return None
+
+
+def write_simulator_state(
+    twin_name: str,
+    *,
+    project_name: str,
+    host_port: int,
+    input_dir: Path,
+) -> SimulatorState:
+    deployment_name = resolve_manager_deployment_name(twin_name)
+    url = f"http://127.0.0.1:{host_port}"
+    state: SimulatorState = {
+        "digital_twin_name": deployment_name,
+        "project_name": project_name,
+        "host_port": host_port,
+        "url": url,
+        "input_dir": relative_to_repo(input_dir),
+    }
+
+    state_file = MANAGER_DEPLOYMENTS_DIR / deployment_name / SIMULATOR_STATE_FILE
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    print(f"Saved simulator state: {relative_to_repo(state_file)}")
+    return state
+
+
+def delete_simulator_state(twin_name: str) -> None:
+    state = read_simulator_state(twin_name)
+    if not state:
+        return
+
+    state_file = MANAGER_DEPLOYMENTS_DIR / str(state["digital_twin_name"]) / SIMULATOR_STATE_FILE
+    if state_file.is_file():
+        state_file.unlink()
+        print(f"Removed simulator state: {relative_to_repo(state_file)}")
+
+
 def required_twins_from_fedtwin(fedtwin_path: Path) -> list[str]:
     fedtwin_path = resolve_repo_path(fedtwin_path)
     if not fedtwin_path.is_file():
@@ -376,6 +485,50 @@ def _copy_directory_contents_clean(
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
+
+
+def _load_simulator_state(state_file: Path) -> SimulatorState:
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"Simulator state is not valid JSON: {relative_to_repo(state_file)} ({error})")
+
+    if not isinstance(data, dict):
+        fail(f"Simulator state root must be an object: {relative_to_repo(state_file)}")
+
+    digital_twin_name = data.get("digital_twin_name")
+    project_name = data.get("project_name")
+    host_port = data.get("host_port")
+    url = data.get("url")
+    input_dir = data.get("input_dir")
+
+    if not isinstance(digital_twin_name, str) or not digital_twin_name:
+        fail(f"Simulator state field 'digital_twin_name' must be a non-empty string: {relative_to_repo(state_file)}")
+    if not isinstance(project_name, str) or not project_name:
+        fail(f"Simulator state field 'project_name' must be a non-empty string: {relative_to_repo(state_file)}")
+    if not isinstance(host_port, int):
+        fail(f"Simulator state field 'host_port' must be an integer: {relative_to_repo(state_file)}")
+    if not isinstance(url, str) or not url:
+        fail(f"Simulator state field 'url' must be a non-empty string: {relative_to_repo(state_file)}")
+    if not isinstance(input_dir, str) or not input_dir:
+        fail(f"Simulator state field 'input_dir' must be a non-empty string: {relative_to_repo(state_file)}")
+
+    return {
+        "digital_twin_name": digital_twin_name,
+        "project_name": project_name,
+        "host_port": host_port,
+        "url": url,
+        "input_dir": input_dir,
+    }
+
+
+def _is_local_port_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
 
 
 def print_config_set(label: str, config_dir: Path) -> None:

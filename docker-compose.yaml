@@ -106,7 +106,6 @@ services:
         target: /pipeline/code
   cloud-deployer-test-simulator:
     image: evbodanov/cloud-deployer-test-simulator:v1
-    container_name: cloud-deployer-test-simulator
     profiles:
       - simulator
     environment:
@@ -115,11 +114,20 @@ services:
       AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
       AWS_REGION: "${AWS_REGION:-eu-central-1}"
     volumes:
-      - ./pipeline/digital-twin-manager/input/config.json:/app/config.json:ro
-      - ./pipeline/digital-twin-manager/input/config_hierarchy.json:/app/config_hierarchy.json:ro
-      - ./pipeline/digital-twin-manager/input/config_iot_devices.json:/app/config_iot_devices.json:ro
+      - type: bind
+        source: ${SIMULATOR_INPUT_HOST_DIR:-./pipeline/digital-twin-manager/input}/config.json
+        target: /app/config.json
+        read_only: true
+      - type: bind
+        source: ${SIMULATOR_INPUT_HOST_DIR:-./pipeline/digital-twin-manager/input}/config_hierarchy.json
+        target: /app/config_hierarchy.json
+        read_only: true
+      - type: bind
+        source: ${SIMULATOR_INPUT_HOST_DIR:-./pipeline/digital-twin-manager/input}/config_iot_devices.json
+        target: /app/config_iot_devices.json
+        read_only: true
     ports:
-      - 127.0.0.1:5000:5000
+      - "127.0.0.1:${SIMULATOR_HOST_PORT:-5000}:5000"
 
 volumes:
   enterprise-architect-wine:

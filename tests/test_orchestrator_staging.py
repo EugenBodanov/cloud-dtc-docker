@@ -142,6 +142,69 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.assertTrue((self.manager_input / "config.json").is_file())
         self.assertFalse((self.manager_input / "stale.json").exists())
 
+    def test_simulator_project_name_is_deterministic_and_safe(self) -> None:
+        project_name = staging.simulator_project_name("dtc-y-03")
+
+        self.assertEqual(project_name, staging.simulator_project_name("dtc-y-03"))
+        self.assertRegex(project_name, r"^cloud-dtc-simulator-dtc-y-03-[0-9a-f]{8}$")
+        self.assertEqual(project_name, project_name.lower())
+
+    def test_simulator_state_can_be_written_read_listed_and_deleted(self) -> None:
+        input_dir = self.manager_deployments / "PV" / "input"
+        self.write_manager_config_set(input_dir, "PV")
+
+        state = staging.write_simulator_state(
+            "PV",
+            project_name="cloud-dtc-simulator-pv-12345678",
+            host_port=5000,
+            input_dir=input_dir,
+        )
+
+        self.assertEqual(state["digital_twin_name"], "PV")
+        self.assertEqual(state["url"], "http://127.0.0.1:5000")
+        self.assertEqual(staging.read_simulator_state("pv")["project_name"], "cloud-dtc-simulator-pv-12345678")
+        self.assertEqual([state["digital_twin_name"] for state in staging.list_simulator_states()], ["PV"])
+
+        staging.delete_simulator_state("PV")
+
+        self.assertIsNone(staging.read_simulator_state("PV"))
+        self.assertEqual(staging.list_simulator_states(), [])
+
+    def test_list_simulator_states_does_not_require_valid_deployment_input(self) -> None:
+        self.write_json(
+            self.manager_deployments / "PV" / "simulator.json",
+            {
+                "digital_twin_name": "PV",
+                "project_name": "cloud-dtc-simulator-pv-12345678",
+                "host_port": 5000,
+                "url": "http://127.0.0.1:5000",
+                "input_dir": "pipeline/digital-twin-manager/deployments/PV/input",
+            },
+        )
+
+        self.assertEqual([state["digital_twin_name"] for state in staging.list_simulator_states()], ["PV"])
+
+    def test_allocate_simulator_host_port_skips_ports_from_state(self) -> None:
+        input_dir = self.manager_deployments / "PV" / "input"
+        self.write_manager_config_set(input_dir, "PV")
+        staging.write_simulator_state(
+            "PV",
+            project_name="cloud-dtc-simulator-pv-12345678",
+            host_port=5000,
+            input_dir=input_dir,
+        )
+
+        original_port_check = staging._is_local_port_available
+        staging._is_local_port_available = lambda port: True
+        try:
+            self.assertEqual(staging.allocate_simulator_host_port(start=5000, end=5001), 5001)
+        finally:
+            staging._is_local_port_available = original_port_check
+
+    def test_require_manager_deployment_simulator_input_fails_when_missing(self) -> None:
+        with self.assertRaises(SystemExit):
+            staging.require_manager_deployment_simulator_input("PV")
+
     def test_stage_federation_inputs_uses_only_twins_from_fedtwin(self) -> None:
         self.write_fedtwin(["PV.production", "Battery.status"])
         self.write_broker_config()
