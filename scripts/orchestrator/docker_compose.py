@@ -95,7 +95,7 @@ def run_converter(
 
     env = None
     if input_host_dir:
-        env = {"DTP_V2_INPUT_HOST_DIR": str(input_host_dir)}
+        env = {"DTP_V2_INPUT_HOST_DIR": input_host_dir.resolve().as_posix()}
 
     run_command(command, show_output=show_container_logs, env=env)
 
