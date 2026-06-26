@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from scripts.orchestrator import app
 
@@ -41,6 +42,37 @@ class OrchestratorAppCommandTests(unittest.TestCase):
 
         self.assertTrue(matched)
         self.assertEqual(target, "dtc-y-03")
+
+    def test_continue_sysml_v1_short_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v1")
+
+        self.assertEqual(converter, "v1")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_v2_short_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v2")
+
+        self.assertEqual(converter, "v2")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_profile_long_command_matches(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue digital-twin-profile-sysml-v1")
+
+        self.assertEqual(converter, "v1")
+        self.assertIsNone(target)
+
+    def test_continue_sysml_v2_target_is_preserved_for_selection(self) -> None:
+        converter, target = app._sysml_profile_command_target("continue sysml-v2 demo.sysml")
+
+        self.assertEqual(converter, "v2")
+        self.assertEqual(target, "demo.sysml")
+
+    def test_resolve_staged_file_selection_supports_number_and_name(self) -> None:
+        sources = [Path("first.sysml"), Path("Second.sysml")]
+
+        self.assertEqual(app._resolve_staged_file_selection("1", sources), Path("first.sysml"))
+        self.assertEqual(app._resolve_staged_file_selection("second.sysml", sources), Path("Second.sysml"))
+        self.assertIsNone(app._resolve_staged_file_selection("missing.sysml", sources))
 
     def test_resolve_manager_deployment_selection_supports_number_and_name(self) -> None:
         deployments = ["Battery", "PV"]

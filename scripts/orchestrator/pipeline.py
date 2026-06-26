@@ -53,6 +53,7 @@ from .staging import (
     restore_manager_deployment_input,
     save_manager_deployment_input,
     save_manager_deployment_output,
+    select_staged_converter_input,
     simulator_project_name,
     stage_converter_input,
     stage_federation_inputs_from_deployments,
@@ -117,6 +118,50 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
         return
 
     run_federation_stage(config)
+
+
+def run_staged_converter_stage(config: PipelineConfig, *, converter: str, selected_input: Path | None = None) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    print(f"\nConverter: {converter_label(converter)}")
+    print(f"Docker Compose file: {relative_to_repo(compose_file)}")
+
+    container_input_file, used_model_files, input_host_dir = select_staged_converter_input(
+        converter,
+        clean_output=config.clean_stage,
+        selected_input=selected_input,
+    )
+    print_file_listing(f"staged {converter_label(converter)} input", used_model_files)
+    if converter == "v2":
+        print_text_files("sysml-v2 input", used_model_files)
+
+    run_converter(
+        converter,
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        container_input_file=container_input_file,
+        digital_twin_name=config.digital_twin_name,
+        path_maps=config.path_maps,
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+        input_host_dir=input_host_dir,
+    )
+
+    generated_twin_dir = config.generated_twin_dir
+    if not generated_twin_dir and converter == "v1":
+        generated_twin_dir = config.digital_twin_name.lower()
+
+    converter_output = find_converter_output(
+        converter,
+        generated_twin_dir=generated_twin_dir,
+    )
+    if config.show_output_configs:
+        print_config_set("converter output", converter_output)
+
+    stage_digital_twin_manager_input(config, converter_output)
+    print("\nStopped after converter. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
 
 
 def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: Path) -> None:

@@ -78,6 +78,7 @@ def run_converter(
     path_maps: tuple[str, ...],
     build_images: bool,
     show_container_logs: bool,
+    input_host_dir: Path | None = None,
 ) -> None:
     service = PROFILE_SERVICES[converter]
     command = compose_command(compose_file, profiles) + ["run", "--rm", "-T"]
@@ -92,7 +93,11 @@ def run_converter(
             fail("Internal error: missing SysML v1 input file.")
         command.extend([container_input_file, digital_twin_name])
 
-    run_command(command, show_output=show_container_logs)
+    env = None
+    if input_host_dir:
+        env = {"DTP_V2_INPUT_HOST_DIR": input_host_dir.resolve().as_posix()}
+
+    run_command(command, show_output=show_container_logs, env=env)
 
 
 def run_manager_deploy(

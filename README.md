@@ -245,6 +245,35 @@ pipeline/digital-twin-manager/deployments/Battery/input/config.json
 pipeline/digital-twin-manager/deployments/Battery/output/Battery_federation_input.json
 ```
 
+The `continue sysml-v1` and `continue sysml-v2` commands run the corresponding
+profile converter from its staged input directory and then prepare
+`digital-twin-manager/input` from the generated converter output:
+
+```text
+continue sysml-v1
+continue sysml-v2
+```
+
+If multiple `.sysml` files are staged for sysml-v2, `continue sysml-v2` shows a
+numbered menu. You can also select the input directly:
+
+```text
+continue sysml-v2 demo_export_1.sysml
+```
+
+Long aliases are also accepted:
+
+```text
+continue digital-twin-profile-sysml-v1
+continue digital-twin-profile-sysml-v2
+```
+
+These converter commands use the already staged files under
+`pipeline/digital-twin-profile-sysml-v1/input` or
+`pipeline/digital-twin-profile-sysml-v2/input`. The sysml-v2 command runs the
+selected `.sysml` file in an isolated run input, so other staged `.sysml` files
+are left untouched.
+
 The `continue digital-twin-manager` and `destroy digital-twin-manager` commands
 use saved deployment inputs. Without an argument, they show a numbered menu. You
 can also select a twin directly:

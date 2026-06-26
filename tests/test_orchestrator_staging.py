@@ -18,6 +18,10 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.manager_deployments = self.pipeline_root / "digital-twin-manager" / "deployments"
         self.federation_input = self.pipeline_root / "fed-sysml" / "input"
         self.federation_output = self.pipeline_root / "fed-sysml" / "output"
+        self.profile_v1_input = self.pipeline_root / "digital-twin-profile-sysml-v1" / "input"
+        self.profile_v1_output = self.pipeline_root / "digital-twin-profile-sysml-v1" / "output"
+        self.profile_v2_input = self.pipeline_root / "digital-twin-profile-sysml-v2" / "input"
+        self.profile_v2_output = self.pipeline_root / "digital-twin-profile-sysml-v2" / "output"
         self.grafana_dir = self.pipeline_root / "grafana"
         self.grafana_state = self.grafana_dir / "grafana.json"
 
@@ -27,6 +31,10 @@ class OrchestratorStagingTests(unittest.TestCase):
             self.manager_deployments,
             self.federation_input / "strategyInputs",
             self.federation_output,
+            self.profile_v1_input,
+            self.profile_v1_output,
+            self.profile_v2_input,
+            self.profile_v2_output,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +45,8 @@ class OrchestratorStagingTests(unittest.TestCase):
             "MANAGER_DEPLOYMENTS_DIR": staging.MANAGER_DEPLOYMENTS_DIR,
             "FEDERATION_INPUT_DIR": staging.FEDERATION_INPUT_DIR,
             "FEDERATION_OUTPUT_DIR": staging.FEDERATION_OUTPUT_DIR,
+            "PROFILE_INPUT_DIRS": staging.PROFILE_INPUT_DIRS,
+            "PROFILE_OUTPUT_DIRS": staging.PROFILE_OUTPUT_DIRS,
             "GRAFANA_DIR": staging.GRAFANA_DIR,
             "GRAFANA_STATE_PATH": staging.GRAFANA_STATE_PATH,
         }
@@ -46,6 +56,14 @@ class OrchestratorStagingTests(unittest.TestCase):
         staging.MANAGER_DEPLOYMENTS_DIR = self.manager_deployments
         staging.FEDERATION_INPUT_DIR = self.federation_input
         staging.FEDERATION_OUTPUT_DIR = self.federation_output
+        staging.PROFILE_INPUT_DIRS = {
+            "v1": self.profile_v1_input,
+            "v2": self.profile_v2_input,
+        }
+        staging.PROFILE_OUTPUT_DIRS = {
+            "v1": self.profile_v1_output,
+            "v2": self.profile_v2_output,
+        }
         staging.GRAFANA_DIR = self.grafana_dir
         staging.GRAFANA_STATE_PATH = self.grafana_state
 
@@ -57,6 +75,15 @@ class OrchestratorStagingTests(unittest.TestCase):
     def write_json(self, path: Path, data: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def write_sysml_v1_export(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '<xmi:XMI xmlns:xmi="http://www.omg.org/XMI"><elements>'
+            '<element><properties stereotype="Twin" /></element>'
+            '</elements></xmi:XMI>',
+            encoding="utf-8",
+        )
 
     def write_fedtwin(self, strategy_refs: list[str]) -> Path:
         path = self.federation_input / "fedtwin.json"
@@ -102,6 +129,59 @@ class OrchestratorStagingTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             staging.required_twins_from_fedtwin(fedtwin)
+
+    def test_select_staged_converter_input_v1_accepts_one_xml(self) -> None:
+        source = self.profile_v1_input / "model.xml"
+        self.write_sysml_v1_export(source)
+        (self.profile_v1_output / "stale.txt").write_text("old", encoding="utf-8")
+
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input("v1", clean_output=True)
+
+        self.assertEqual(container_input, "/pipeline/input/model.xml")
+        self.assertEqual(used_files, [source])
+        self.assertIsNone(input_host_dir)
+        self.assertFalse((self.profile_v1_output / "stale.txt").exists())
+
+    def test_select_staged_converter_input_v1_rejects_multiple_xml_xmi(self) -> None:
+        self.write_sysml_v1_export(self.profile_v1_input / "model.xml")
+        self.write_sysml_v1_export(self.profile_v1_input / "model.xmi")
+
+        with self.assertRaises(SystemExit):
+            staging.select_staged_converter_input("v1", clean_output=True)
+
+    def test_select_staged_converter_input_v2_accepts_sysml(self) -> None:
+        source = self.profile_v2_input / "model.sysml"
+        source.write_text("package Demo {}", encoding="utf-8")
+
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input("v2", clean_output=True)
+
+        self.assertIsNone(container_input)
+        self.assertEqual(used_files, [source])
+        self.assertIsNone(input_host_dir)
+
+    def test_select_staged_converter_input_v2_can_prepare_selected_run_input(self) -> None:
+        first = self.profile_v2_input / "first.sysml"
+        second = self.profile_v2_input / "second.sysml"
+        first.write_text("package First {}", encoding="utf-8")
+        second.write_text("package Second {}", encoding="utf-8")
+
+        container_input, used_files, input_host_dir = staging.select_staged_converter_input(
+            "v2",
+            clean_output=True,
+            selected_input=second,
+        )
+
+        self.assertIsNone(container_input)
+        self.assertEqual(used_files, [second])
+        self.assertEqual(input_host_dir, self.profile_v2_input.parent / "run-input")
+        self.assertTrue((input_host_dir / "second.sysml").is_file())
+        self.assertFalse((input_host_dir / "first.sysml").exists())
+
+    def test_select_staged_converter_input_v2_rejects_xml(self) -> None:
+        self.write_sysml_v1_export(self.profile_v2_input / "model.xml")
+
+        with self.assertRaises(SystemExit):
+            staging.select_staged_converter_input("v2", clean_output=True)
 
     def test_save_manager_deployment_input_copies_current_manager_input(self) -> None:
         self.write_manager_config_set(self.manager_input, "PV")
