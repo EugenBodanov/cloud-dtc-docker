@@ -2,6 +2,7 @@
 
 !.gitignore
 !README.md
+!PIPELINE_STATE_DIAGRAM.md
 !docker-compose.yaml
 !orchestrator_config.json
 !run_pipeline

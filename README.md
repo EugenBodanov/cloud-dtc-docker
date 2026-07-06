@@ -9,6 +9,8 @@ Enterprise Architect / SysML export
   -> optional federation, Terraform, simulator, Grafana
 ```
 
+Pipeline state diagram: [PIPELINE_STATE_DIAGRAM.md](PIPELINE_STATE_DIAGRAM.md).
+
 ## Requirements
 
 - Docker Desktop is running.
@@ -212,7 +214,7 @@ Most used fields:
 | `remove_infrastructure_on_exit` | Removes Enterprise Architect and `sysml-kernel` on exit.          |
 | `watch.directory`               | Folder watched for exports.                                       |
 
-Optional environment file:
+Environment file:
 
 ```powershell
 Copy-Item .env.example .env
