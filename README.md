@@ -1,375 +1,222 @@
-# Cloud DTC Pipeline Demo
+# Cloud DTC User Guide
 
-This repository contains a Docker Compose based pipeline:
+Cloud DTC runs a Docker Compose pipeline for digital twin creation.
 
 ```text
-enterprise-architect
-  -> digital-twin-profile-sysml-v1 or digital-twin-profile-sysml-v2
+Enterprise Architect / SysML export
+  -> SysML profile converter
   -> digital-twin-manager
-  -> AWS deploy
+  -> optional federation, Terraform, simulator, Grafana
 ```
 
-## Prerequisites
+## Requirements
 
-Run commands from the repository root:
+- Docker Desktop is running.
+- Python 3 is available as `python`.
+- AWS credentials (needed for real deploy, destroy, or Terraform actions).
 
-```powershell
-cd path\to\cloud-dtc-docker
-```
+## Quick Start
 
-Docker Desktop must be running.
-
-The default compose file is:
-
-```text
-docker-compose.yaml
-```
-
-Pipeline settings live in:
-
-```text
-orchestrator_config.json
-```
-
-## Enterprise Architect UI Storage
-
-Enterprise Architect is available at:
-
-```text
-http://127.0.0.1:6080
-```
-
-The repository directory `enterprise-architect` is mounted into the UI
-container at:
-
-```text
-/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect
-```
-
-In Enterprise Architect's Wine file picker, the same directory is available as:
-
-```text
-C:\users\ea\Documents\enterprise-architect
-```
-
-Save Enterprise Architect project files (`.qea`, `.qeax`, `.eap`, `.eapx`) under:
-
-```text
-enterprise-architect/projects
-```
-
-Save Enterprise Architect exports under this host directory:
-
-```text
-pipeline/enterprise-architect/output
-```
-
-The run loop watches this directory. When a new export is created or an existing
-export is updated, it prints the run configuration and asks whether to run the
-pipeline.
-
-Those files are stored on the host and survive container restarts. The existing
-input example is stored on the host under:
-
-```text
-pipeline/enterprise-architect/input/demo_model.xml
-```
-
-Inside Enterprise Architect, input and output are still available through the
-usual Wine file picker paths:
-
-```text
-C:\users\ea\Documents\enterprise-architect\input\demo_model.xml
-C:\users\ea\Documents\enterprise-architect\output
-```
-
-## Running The Pipeline
-
-Start the watcher from the repository root:
+Run from the repository root:
 
 ```powershell
 python run_pipeline.py
 ```
 
-On startup it brings up:
-
-- `enterprise-architect`
-- `sysml-kernel`
-
-Then it watches:
+This starts Enterprise Architect, starts `sysml-kernel`, and watches:
 
 ```text
 pipeline/enterprise-architect/output
 ```
 
-Type this into the running process to stop it:
+Open Enterprise Architect:
+
+```text
+http://127.0.0.1:6080
+```
+
+Save or update an export in the watched output folder. The run loop will ask
+whether to run the pipeline.
+
+Stop the run loop:
 
 ```text
 exit
 ```
 
-To run automatically without confirmation when an export changes:
+Useful launch options:
 
 ```powershell
 python run_pipeline.py --auto-run
-```
-
-You can also set this in `orchestrator_config.json`:
-
-```json
-"auto_run": true
-```
-
-To stop and remove the `enterprise-architect` and `sysml-kernel` containers
-when the watcher exits:
-
-```powershell
+python run_pipeline.py --config path\to\orchestrator_config.json
 python run_pipeline.py --remove-infrastructure-on-exit
 ```
 
-Or set this in `orchestrator_config.json`:
+## Enterprise Architect Paths
 
-```json
-"remove_infrastructure_on_exit": true
-```
+Use these paths inside the Enterprise Architect Wine file picker:
 
-This removes only the containers. Docker volumes such as the Enterprise
-Architect Wine prefix are kept.
+| Use               | Wine path                                             | Host path                              |
+| ----------------- | ----------------------------------------------------- | -------------------------------------- |
+| Input examples    | `C:\users\ea\Documents\enterprise-architect\input`    | `pipeline/enterprise-architect/input`  |
+| Save exports here | `C:\users\ea\Documents\enterprise-architect\output`   | `pipeline/enterprise-architect/output` |
+| EA project files  | `C:\users\ea\Documents\enterprise-architect\projects` | `enterprise-architect/projects`        |
 
-## Export Routing
+## Export Types
 
-The converter is selected from the updated export file extension:
+| Export         | Converter                       |
+| -------------- | ------------------------------- |
+| `.xml`, `.xmi` | `digital-twin-profile-sysml-v1` |
+| `.sysml`       | `digital-twin-profile-sysml-v2` |
 
-- `.xml` or `.xmi` -> `digital-twin-profile-sysml-v1`
-- `.sysml` -> `digital-twin-profile-sysml-v2`
+## Normal Run
 
-For `.xml` or `.xmi`, export from Enterprise Architect as XMI 2.1/UML 2.1 with
-Enterprise Architect extension data. The sysml-v1 converter does not support
-the older XMI 1.1/UML 1.3 export layout.
+1. Save an export in `pipeline/enterprise-architect/output`.
+2. Answer `y` to `Run pipeline for this export?`.
+3. Answer `n` to AWS deploy if you only want local generated configs.
 
-The current demo `path_maps` value in `orchestrator_config.json` is required
-because the XML model contains a hardcoded absolute path from another machine:
-
-```text
-C:\Users\marco\Git-projects\anyFile\digital-twin-manager\lambda_functions\event_actions\stopCharging
-```
-
-Inside the Docker pipeline, Lambda code is mounted under:
-
-```text
-/pipeline/code
-```
-
-So the config maps the old path to:
-
-```text
-/pipeline/code/microgrid/stopCharging
-```
-
-For this to work, the repository must include the demo Lambda folder:
-
-```text
-demo-code/microgrid/stopCharging
-```
-
-## Config
-
-The main settings are stored in `orchestrator_config.json`:
-
-```json
-{
-  "compose_file": "docker-compose.yaml",
-  "compose_profiles": ["pipeline"],
-  "digital_twin_name": "dtwin",
-  "path_maps": [],
-  "show_container_logs": false,
-  "show_configs": true,
-  "deploy_to_aws": false,
-  "auto_run": false,
-  "remove_infrastructure_on_exit": false
-}
-```
-
-## What The Demo Shows
-
-The run loop prints:
-
-- the changed Enterprise Architect export file;
-- the selected converter;
-- the Docker Compose file;
-- the config that will be used for this run;
-- the generated config files copied into `digital-twin-manager` input.
-
-When `show_configs` is `true`, configs are printed from:
+If deploy is skipped, generated manager configs are ready in:
 
 ```text
 pipeline/digital-twin-manager/input
 ```
 
-These are the files that `digital-twin-manager` would use for deploy:
+The same input is saved by twin name:
 
 ```text
-config.json
-config_hierarchy.json
-config_iot_devices.json
-config_events.json
+pipeline/digital-twin-manager/deployments/<Twin>/input
 ```
 
-AWS deploy is controlled by `deploy_to_aws`. Leave it `false` during safe demos
-unless AWS credentials and deploy intent are confirmed. Set it to `null` or omit
-it to ask for AWS deploy confirmation during interactive runs; auto-run keeps
-deploy disabled when the setting is unset.
+## Commands
 
-## Federation Artifacts
+Type commands in the running `python run_pipeline.py` terminal.
 
-Each `digital-twin-manager` stage still handles one digital twin. After configs
-are staged, the orchestrator saves the reusable manager input under:
+| Command                                | Purpose                                                    |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `help`                                 | Show commands.                                             |
+| `continue sysml-v1`                    | Run staged v1 converter input.                             |
+| `continue sysml-v2 [file]`             | Run one staged v2 `.sysml` file. Omit `[file]` for a menu. |
+| `continue digital-twin-manager [name]` | Deploy a saved twin input. Omit `[name]` for a menu.       |
+| `destroy digital-twin-manager [name]`  | Destroy a saved twin deployment.                           |
+| `continue fed-sysml`                   | Build federation output from saved deployed twins.         |
+| `fed terraform plan`                   | Plan generated federation Terraform.                       |
+| `fed terraform apply`                  | Plan, confirm, then apply federation Terraform.            |
+| `fed terraform destroy`                | Confirm, then destroy federation Terraform resources.      |
+| `start simulator [name]`               | Start a local simulator for a saved twin input.            |
+| `stop simulator [name]`                | Stop a running simulator.                                  |
+| `start grafana`                        | Start local Grafana.                                       |
+| `stop grafana`                         | Stop local Grafana.                                        |
+| `exit`                                 | Stop the watcher.                                          |
+
+## Staged SysML v2 Run
+
+Put `.sysml` files here:
 
 ```text
-pipeline/digital-twin-manager/deployments/<digital_twin_name>/input
+pipeline/digital-twin-profile-sysml-v2/input
 ```
 
-After a successful deploy, it saves the generated output under:
+Run one file:
 
 ```text
-pipeline/digital-twin-manager/deployments/<digital_twin_name>/output
+continue sysml-v2 Battery2.sysml
 ```
 
-For example, after staging and deploying `PV` and `Battery`, the saved artifacts
-look like:
+The converter prepares `digital-twin-manager` input and then asks whether to
+continue with deploy.
+
+## Deploy, Destroy, Federate
+
+Deploy or destroy a saved twin:
 
 ```text
-pipeline/digital-twin-manager/deployments/PV/input/config.json
-pipeline/digital-twin-manager/deployments/PV/output/PV_federation_input.json
-pipeline/digital-twin-manager/deployments/Battery/input/config.json
-pipeline/digital-twin-manager/deployments/Battery/output/Battery_federation_input.json
+continue digital-twin-manager Battery2
+destroy digital-twin-manager Battery2
 ```
 
-The `continue sysml-v1` and `continue sysml-v2` commands run the corresponding
-profile converter from its staged input directory and then prepare
-`digital-twin-manager/input` from the generated converter output:
+Deployment output is saved here:
 
 ```text
-continue sysml-v1
-continue sysml-v2
+pipeline/digital-twin-manager/deployments/<Twin>/output
 ```
 
-If multiple `.sysml` files are staged for sysml-v2, `continue sysml-v2` shows a
-numbered menu. You can also select the input directly:
-
-```text
-continue sysml-v2 demo_export_1.sysml
-```
-
-Long aliases are also accepted:
-
-```text
-continue digital-twin-profile-sysml-v1
-continue digital-twin-profile-sysml-v2
-```
-
-These converter commands use the already staged files under
-`pipeline/digital-twin-profile-sysml-v1/input` or
-`pipeline/digital-twin-profile-sysml-v2/input`. The sysml-v2 command runs the
-selected `.sysml` file in an isolated run input, so other staged `.sysml` files
-are left untouched.
-
-The `continue digital-twin-manager` and `destroy digital-twin-manager` commands
-use saved deployment inputs. Without an argument, they show a numbered menu. You
-can also select a twin directly:
-
-```text
-continue digital-twin-manager PV
-destroy digital-twin-manager Battery
-```
-
-Simulator instances also use saved deployment inputs. Each selected twin starts
-as its own Docker Compose project, with an automatically assigned host port
-starting at `5000`. The orchestrator stores the runtime state in:
-
-```text
-pipeline/digital-twin-manager/deployments/<digital_twin_name>/simulator.json
-```
-
-Without an argument, `start simulator` shows saved deployments and
-`stop simulator` shows running simulator instances. You can also select a twin
-directly:
-
-```text
-start simulator PV
-start simulator Battery
-stop simulator PV
-stop simulator Battery
-```
-
-For example, `PV` may run at `http://127.0.0.1:5000` while `Battery` runs at
-`http://127.0.0.1:5001`.
-
-The federation stage is still separate. When you type:
-
-```text
-continue fed-sysml
-```
-
-the orchestrator reads:
+To federate, first deploy every twin referenced in:
 
 ```text
 pipeline/fed-sysml/input/fedtwin.json
 ```
 
-It extracts the required twin names from strategy references such as:
+Then run:
 
-```json
-"strategies": [
-  "PV.production",
-  "Battery.status"
-]
+```text
+continue fed-sysml
 ```
 
-Then it copies only those saved artifacts into:
+Federation inputs are staged in:
 
 ```text
 pipeline/fed-sysml/input/strategyInputs
 ```
 
-and runs `fed-sysml`. In other words, `fedtwin.json` defines what gets
-federated, while `deployments/<Twin>/output` defines which deployed twins are
-available for federation.
+Federation output is written to:
 
-## Local Grafana
+```text
+pipeline/fed-sysml/output
+```
 
-The demo uses one shared local Grafana container:
+## Simulator And Grafana
+
+Start a simulator for a saved twin:
+
+```text
+start simulator Battery2
+```
+
+Simulator ports start at `5000`. State is saved in:
+
+```text
+pipeline/digital-twin-manager/deployments/<Twin>/simulator.json
+```
+
+Start Grafana:
 
 ```text
 start grafana
-stop grafana
 ```
 
-The orchestrator does not create Grafana datasources or dashboards. It only
-starts/stops the container and records runtime state in:
-
-```text
-pipeline/grafana/grafana.json
-```
-
-Grafana plugins can be installed at container startup with:
-
-```text
-LOCAL_GRAFANA_PLUGINS=grafana-iot-twinmaker-app
-```
-
-Use a comma-separated list for multiple plugins. You can also set
-`LOCAL_GRAFANA_IMAGE` to a custom image that already contains the plugins you
-need.
-
-By default Grafana runs at:
+Default Grafana URL and login:
 
 ```text
 http://127.0.0.1:3000
+admin / admin123
 ```
 
-Override the port with:
+## Configuration
+
+Main config:
 
 ```text
-LOCAL_GRAFANA_HOST_PORT=3030
+orchestrator_config.json
 ```
+
+Most used fields:
+
+| Field                           | Use                                                               |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `digital_twin_name`             | Name passed to the v1 converter.                                  |
+| `path_maps`                     | Maps model paths to container paths such as `/pipeline/code/...`. |
+| `deploy_to_aws`                 | `false` stops before deploy, `true` deploys, `null` asks.         |
+| `run_federation_workflow`       | Runs `fed-sysml` after manager deploy.                            |
+| `fed_sysml_terraform_action`    | `none`, `plan`, `apply`, or `destroy`.                            |
+| `auto_run`                      | Runs detected exports without asking.                             |
+| `remove_infrastructure_on_exit` | Removes Enterprise Architect and `sysml-kernel` on exit.          |
+| `watch.directory`               | Folder watched for exports.                                       |
+
+Optional environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Use `.env` for AWS credentials, code mount folders, path maps, Grafana plugins,
+and port overrides. Docker Compose reads it automatically.
