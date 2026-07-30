@@ -10,7 +10,7 @@ services:
       - "127.0.0.1:6080:6080"
     volumes:
       - enterprise-architect-wine:/home/ea/.wine
-      - ./enterprise-architect:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect
+      - ./pipeline/enterprise-architect/projects:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/projects
       - ./pipeline/enterprise-architect/input:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/input
       - ./pipeline/enterprise-architect/output:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/output
     environment:
@@ -49,7 +49,7 @@ services:
       - ./pipeline/fed-sysml/input:/pipeline/input
       - ./pipeline/fed-sysml/output:/pipeline/output
       - type: bind
-        source: ${FED_SYSML_CODE_HOST_DIR:-./digital-twin-manager/testLambdaFunctions}
+        source: ${FED_SYSML_CODE_HOST_DIR:-./demo-code}
         target: /pipeline/code
         read_only: true
 
@@ -155,6 +155,8 @@ services:
       - "127.0.0.1:${LOCAL_GRAFANA_HOST_PORT:-3000}:3000"
     volumes:
       - grafana:/var/lib/grafana
+      - ./pipeline/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./pipeline/grafana/dashboards:/etc/grafana/dashboards:ro
 
 volumes:
   enterprise-architect-wine:

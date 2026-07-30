@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 def lambda_handler(event, context):
     print("Event: " + json.dumps(event))
 
-    kombi_data = _collector_payload(event).get("ConsumptionStrategy", {})
+    kombi_data = _collector_payload(event).get("ConsumptionStrategy2", {})
     pv_data = kombi_data.get("production", {})
     battery_data = kombi_data.get("status", {})
 

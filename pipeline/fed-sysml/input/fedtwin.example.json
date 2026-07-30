@@ -4,7 +4,7 @@
       "name": "MicroGrid",
       "newStrategies": [
         {
-          "name": "ConsumptionStrategy",
+          "name": "ConsumptionStrategy2",
           "pathToCode": "/pipeline/code/microgrid/fedTwinCombinedStrategy",
           "feedback": {
             "type": "INTERNAL",
