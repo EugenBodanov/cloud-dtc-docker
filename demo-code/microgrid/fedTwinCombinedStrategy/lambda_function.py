@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 def lambda_handler(event, context):
     print("Event: " + json.dumps(event))
 
-    kombi_data = _collector_payload(event).get("ConsumptionStrategy", {})
+    kombi_data = _collector_payload(event).get("dtc-ConsumptionStrategy", {})
     pv_data = kombi_data.get("production", {})
     battery_data = kombi_data.get("status", {})
 
@@ -17,7 +17,9 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "body": json.dumps({
-            "iotDeviceId": "W3WGHR5ZFf2oohHXwmCfzx",
+            # dtc2bat's p16 device (isPlugged/charges/consumption) - resolved from
+            # pipeline/digital-twin-manager/deployments/dtc2bat/input/config_iot_devices.json
+            "iotDeviceId": "cPwQJsFpvFR6QsSxCiPHgo",
             "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
             "consumption": effective_consumption,
         }),
