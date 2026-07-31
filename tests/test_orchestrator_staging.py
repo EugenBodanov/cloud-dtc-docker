@@ -4,8 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from scripts.orchestrator import pipeline as orchestrator_pipeline
 from scripts.orchestrator import staging
 
 
@@ -193,6 +195,26 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.assertTrue((saved_input / "config.json").is_file())
         self.assertTrue((saved_input / "config_credentials.json").is_file())
         self.assertEqual(staging.list_manager_deployments(), ["PV"])
+
+    def test_stage_manager_input_preserves_credentials_and_providers_when_cleaning(self) -> None:
+        credentials = b'{"aws_region": "eu-central-1"}'
+        providers = b'{"layer_1_provider": "aws"}'
+        (self.manager_input / "config_credentials.json").write_bytes(credentials)
+        (self.manager_input / "config_providers.json").write_bytes(providers)
+        (self.manager_input / "stale.json").write_text("{}", encoding="utf-8")
+        converter_output = self.pipeline_root / "converter-output"
+        self.write_manager_config_set(converter_output, "PV")
+
+        orchestrator_pipeline.stage_digital_twin_manager_input(
+            SimpleNamespace(aws_credentials_file=None, clean_stage=True, show_configs=False),
+            converter_output,
+        )
+
+        self.assertEqual((self.manager_input / "config_credentials.json").read_bytes(), credentials)
+        self.assertEqual((self.manager_input / "config_providers.json").read_bytes(), providers)
+        self.assertFalse((self.manager_input / "stale.json").exists())
+        saved_input = self.manager_deployments / "PV" / "input"
+        self.assertEqual((saved_input / "config_providers.json").read_bytes(), providers)
 
     def test_save_manager_deployment_output_preserves_saved_input(self) -> None:
         self.write_manager_config_set(self.manager_input, "PV")

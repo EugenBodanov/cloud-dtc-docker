@@ -32,7 +32,8 @@ pipeline/digital-twin-profile-sysml-v2/output/
 pipeline/digital-twin-profile-sysml-v2/run-input/
 
 # Digital twin manager runtime state and credentials
-pipeline/digital-twin-manager/input/
+pipeline/digital-twin-manager/input/*
+!pipeline/digital-twin-manager/input/config_providers.json
 pipeline/digital-twin-manager/output/
 pipeline/digital-twin-manager/deployments/
 

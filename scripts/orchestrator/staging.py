@@ -140,7 +140,12 @@ def find_converter_output(converter: str, *, generated_twin_dir: str | None) -> 
     return sorted_candidates[0]
 
 
-def prepare_manager_stage(*, clean_stage: bool, keep_credentials: bytes | None) -> None:
+def prepare_manager_stage(
+    *,
+    clean_stage: bool,
+    keep_credentials: bytes | None,
+    keep_providers: bytes | None,
+) -> None:
     if clean_stage:
         clean_pipeline_dir(MANAGER_INPUT_DIR)
         clean_pipeline_dir(MANAGER_OUTPUT_DIR)
@@ -150,6 +155,9 @@ def prepare_manager_stage(*, clean_stage: bool, keep_credentials: bytes | None) 
 
     if keep_credentials is not None:
         (MANAGER_INPUT_DIR / "config_credentials.json").write_bytes(keep_credentials)
+
+    if keep_providers is not None:
+        (MANAGER_INPUT_DIR / "config_providers.json").write_bytes(keep_providers)
 
 
 def prepare_federation_stage(*, clean_stage: bool) -> None:
@@ -183,6 +191,13 @@ def read_existing_manager_credentials() -> bytes | None:
     credentials = MANAGER_INPUT_DIR / "config_credentials.json"
     if credentials.is_file():
         return credentials.read_bytes()
+    return None
+
+
+def read_existing_manager_providers() -> bytes | None:
+    providers = MANAGER_INPUT_DIR / "config_providers.json"
+    if providers.is_file():
+        return providers.read_bytes()
     return None
 
 

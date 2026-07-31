@@ -47,6 +47,7 @@ from .staging import (
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
+    read_existing_manager_providers,
     read_local_grafana_state,
     read_simulator_state,
     require_manager_deployment_simulator_input,
@@ -168,10 +169,12 @@ def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: P
     saved_credentials = None
     if not config.aws_credentials_file:
         saved_credentials = read_existing_manager_credentials()
+    saved_providers = read_existing_manager_providers()
 
     prepare_manager_stage(
         clean_stage=config.clean_stage,
         keep_credentials=saved_credentials,
+        keep_providers=saved_providers,
     )
     copy_configs_to_manager(converter_output, config.aws_credentials_file)
     save_manager_deployment_input()
