@@ -107,14 +107,65 @@ def run_manager_deploy(
     build_images: bool,
     show_container_logs: bool,
 ) -> None:
-    command = compose_command(compose_file, profiles) + ["run", "--rm", "-T"]
-    if build_images:
-        command.append("--build")
-    command.append("digital-twin-manager")
-    run_command(command, stdin="deploy\nexit\n", show_output=show_container_logs)
+    run_manager_action(
+        "deploy",
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_manager_plan(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    run_manager_action(
+        "plan",
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_manager_apply(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    run_manager_action(
+        "apply",
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
 
 
 def run_manager_destroy(
+    *,
+    compose_file: Path,
+    profiles: tuple[str, ...],
+    build_images: bool,
+    show_container_logs: bool,
+) -> None:
+    run_manager_action(
+        "destroy",
+        compose_file=compose_file,
+        profiles=profiles,
+        build_images=build_images,
+        show_container_logs=show_container_logs,
+    )
+
+
+def run_manager_action(
+    action: str,
     *,
     compose_file: Path,
     profiles: tuple[str, ...],
@@ -125,7 +176,7 @@ def run_manager_destroy(
     if build_images:
         command.append("--build")
     command.append("digital-twin-manager")
-    run_command(command, stdin="destroy\nexit\n", show_output=show_container_logs)
+    run_command(command, stdin=f"{action}\nexit\n", show_output=show_container_logs)
 
 
 def run_fed_sysml(

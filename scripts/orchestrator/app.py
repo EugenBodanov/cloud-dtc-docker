@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from .cli import LaunchOptions
 from .config import PipelineConfig, load_pipeline_config, print_run_config
@@ -10,11 +11,13 @@ from .file_watcher import FileChange, OutputFileWatcher
 from .pipeline import (
     remove_all_cloud_deployer_test_simulators_stage,
     remove_cloud_deployer_test_simulator_stage,
+    run_digital_twin_manager_apply_stage,
     run_digital_twin_manager_destroy_stage,
+    run_digital_twin_manager_plan_stage,
     start_cloud_deployer_test_simulator_stage,
     start_local_grafana_stage,
     stop_local_grafana_stage,
-    run_digital_twin_manager_stage,
+    run_digital_twin_manager_deploy_stage,
     run_fed_sysml_terraform_apply_saved_plan_stage,
     run_fed_sysml_terraform_plan_stage,
     run_fed_sysml_terraform_stage,
@@ -23,12 +26,20 @@ from .pipeline import (
     run_staged_converter_stage,
 )
 from .pipeline_paths import converter_label, relative_to_repo, resolve_repo_path
-from .staging import list_manager_deployments, list_simulator_states, list_staged_converter_inputs
+from .staging import (
+    list_manager_deployments,
+    list_simulator_states,
+    list_staged_converter_inputs,
+    read_manager_input_twin_name,
+)
 from .user_input import UserInput
 
 
 class StopRequested(Exception):
     pass
+
+
+DigitalTwinManagerAction = Literal["deploy", "plan", "apply"]
 
 
 CONTINUE_DIGITAL_TWIN_MANAGER_ALIASES = (
@@ -54,6 +65,22 @@ DESTROY_DIGITAL_TWIN_MANAGER_ALIASES = (
     ["digital", "twin", "manager", "destroy"],
     ["destroy", "deployed", "digital", "twin"],
     ["destroy", "deployed", "digital", "twin", "manager"],
+)
+
+PLAN_DIGITAL_TWIN_MANAGER_ALIASES = (
+    ["plan"],
+    ["plan", "digital", "twin"],
+    ["plan", "digital", "twin", "manager"],
+    ["digital", "twin", "plan"],
+    ["digital", "twin", "manager", "plan"],
+)
+
+APPLY_DIGITAL_TWIN_MANAGER_ALIASES = (
+    ["apply"],
+    ["apply", "digital", "twin"],
+    ["apply", "digital", "twin", "manager"],
+    ["digital", "twin", "apply"],
+    ["digital", "twin", "manager", "apply"],
 )
 
 CONTINUE_SYSML_V1_ALIASES = (
@@ -142,6 +169,8 @@ def run_app(options: LaunchOptions) -> None:
         print(f"\nWatching {relative_to_repo(watch_directory)} for .xml, .xmi, and .sysml exports.")
         print("Type 'continue sysml-v1' or 'continue sysml-v2 [file]' to run a staged converter input.")
         print("Type 'continue digital-twin-manager [name]' to deploy a saved digital twin input.")
+        print("Type 'plan digital-twin-manager [name]' to plan changes to a saved digital twin deployment.")
+        print("Type 'apply digital-twin-manager [name]' to apply its saved digital twin plan.")
         print("Type 'destroy digital-twin-manager [name]' to destroy a saved digital twin deployment.")
         print("Type 'continue fed-sysml' to resume from the fed-sysml step.")
         print("Type 'fed terraform plan' to plan the generated fed-sysml Terraform output.")
@@ -242,13 +271,23 @@ def _run_federation_safely(config: PipelineConfig) -> bool:
         return False
 
 
-def _run_digital_twin_manager_safely(config: PipelineConfig, deployment_name: str | None = None) -> bool:
+def _run_digital_twin_manager_action_safely(
+    config: PipelineConfig,
+    action: DigitalTwinManagerAction,
+    deployment_name: str | None = None,
+) -> bool:
     try:
-        run_digital_twin_manager_stage(config, deployment_name=deployment_name)
+        match action:
+            case "deploy":
+                run_digital_twin_manager_deploy_stage(config, deployment_name=deployment_name)
+            case "plan":
+                run_digital_twin_manager_plan_stage(config, deployment_name=deployment_name)
+            case "apply":
+                run_digital_twin_manager_apply_stage(config, deployment_name=deployment_name)
         return True
     except SystemExit as error:
         code = error.code if isinstance(error.code, int) else 1
-        print(f"\nDigital twin manager step failed with exit code {code}. Watching will continue.")
+        print(f"\nDigital twin manager {action} failed with exit code {code}. Watching will continue.")
         return False
 
 
@@ -363,6 +402,107 @@ def _prompt_yes_no(user_input: UserInput, prompt: str) -> bool:
         if answer in ("y", "yes", "run"):
             return True
         print("Please answer 'y', 'n', or 'exit': ", end="", flush=True)
+
+
+def _prompt_digital_twin_manager_action(
+    user_input: UserInput,
+    converter_name: str,
+) -> DigitalTwinManagerAction | None:
+    print(
+        f"Continue after {converter_name} with digital-twin-manager "
+        "[deploy/plan/apply/N]? ",
+        end="",
+        flush=True,
+    )
+    while True:
+        line = user_input.get_line(timeout=None)
+        if line is None:
+            continue
+        action = line.strip().lower()
+        if _is_exit(action):
+            raise StopRequested
+        if action in ("", "n", "no"):
+            return None
+        if action in ("deploy", "plan", "apply"):
+            return action
+        print("Please answer 'deploy', 'plan', 'apply', 'n', or 'exit': ", end="", flush=True)
+
+
+def _run_digital_twin_manager_apply_with_confirmation(
+    config: PipelineConfig,
+    user_input: UserInput,
+    deployment_name: str,
+) -> bool:
+    if not _prompt_yes_no(
+        user_input,
+        f"Apply the saved digital-twin-manager plan for {deployment_name}? [y/N] ",
+    ):
+        print("Skipped digital-twin-manager apply; the saved plan remains available.")
+        return False
+
+    print(f"Applying digital-twin-manager deployment plan: {deployment_name}")
+    return _run_digital_twin_manager_action_safely(config, "apply", deployment_name)
+
+
+def _run_selected_digital_twin_manager_action(
+    config: PipelineConfig,
+    user_input: UserInput,
+    action: DigitalTwinManagerAction,
+    deployment_name: str,
+) -> bool:
+    if action == "apply":
+        return _run_digital_twin_manager_apply_with_confirmation(
+            config,
+            user_input,
+            deployment_name,
+        )
+
+    action_message = {
+        "deploy": "Deploying digital-twin-manager input",
+        "plan": "Planning digital-twin-manager deployment changes",
+    }[action]
+    print(f"{action_message}: {deployment_name}")
+    return _run_digital_twin_manager_action_safely(
+        config,
+        action,
+        deployment_name=deployment_name,
+    )
+
+
+def _continue_pipeline_after_converter(
+    config: PipelineConfig,
+    user_input: UserInput,
+    converter_name: str,
+) -> None:
+    action = _prompt_digital_twin_manager_action(user_input, converter_name)
+    if action is None:
+        print("Stopped before digital-twin-manager.")
+        return
+
+    deployment_name = read_manager_input_twin_name()
+    manager_succeeded = _run_selected_digital_twin_manager_action(
+        config,
+        user_input,
+        action,
+        deployment_name,
+    )
+    if not manager_succeeded:
+        return
+
+    if action == "plan":
+        if not _run_digital_twin_manager_apply_with_confirmation(
+            config,
+            user_input,
+            deployment_name,
+        ):
+            return
+        action = "apply"
+
+    if _prompt_yes_no(
+        user_input,
+        f"Run federation workflow after digital twin manager {action}? [y/N] ",
+    ):
+        _run_federation_safely(config)
 
 
 def _select_manager_deployment(user_input: UserInput, requested_name: str | None) -> str | None:
@@ -591,17 +731,53 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
         converter_succeeded = _run_staged_converter_safely(config, converter, selected_input)
         if not converter_succeeded:
             return
-        run_manager = _prompt_yes_no(user_input, f"Run digital-twin-manager after {label}? [y/N] ")
-        if not run_manager:
-            return
-        run_federation = _prompt_yes_no(user_input, "Run federation workflow after digital twin manager? [y/N] ")
-        manager_succeeded = _run_digital_twin_manager_safely(config)
-        if run_federation and manager_succeeded:
-            _run_federation_safely(config)
+        _continue_pipeline_after_converter(config, user_input, label)
         return
     if _is_continue_fed_sysml(value):
         print("Continuing from fed-sysml.")
         _run_federation_safely(config)
+        return
+    is_plan_manager, requested_deployment = _digital_twin_manager_command_target(
+        command_text,
+        PLAN_DIGITAL_TWIN_MANAGER_ALIASES,
+    )
+    if is_plan_manager:
+        deployment_name = _select_manager_deployment(user_input, requested_deployment)
+        if not deployment_name:
+            return
+        print(f"Planning digital-twin-manager deployment changes: {deployment_name}")
+        plan_succeeded = _run_digital_twin_manager_action_safely(config, "plan", deployment_name)
+        if not plan_succeeded:
+            return
+        apply_succeeded = _run_digital_twin_manager_apply_with_confirmation(
+            config,
+            user_input,
+            deployment_name,
+        )
+        if apply_succeeded and _prompt_yes_no(
+            user_input,
+            "Run federation workflow after digital twin manager apply? [y/N] ",
+        ):
+            _run_federation_safely(config)
+        return
+    is_apply_manager, requested_deployment = _digital_twin_manager_command_target(
+        command_text,
+        APPLY_DIGITAL_TWIN_MANAGER_ALIASES,
+    )
+    if is_apply_manager:
+        deployment_name = _select_manager_deployment(user_input, requested_deployment)
+        if not deployment_name:
+            return
+        apply_succeeded = _run_digital_twin_manager_apply_with_confirmation(
+            config,
+            user_input,
+            deployment_name,
+        )
+        if apply_succeeded and _prompt_yes_no(
+            user_input,
+            "Run federation workflow after digital twin manager apply? [y/N] ",
+        ):
+            _run_federation_safely(config)
         return
     is_continue_manager, requested_deployment = _digital_twin_manager_command_target(
         command_text,
@@ -613,7 +789,7 @@ def _handle_command(config: PipelineConfig, command: str, user_input: UserInput)
             return
         run_federation = _prompt_yes_no(user_input, "Run federation workflow after digital twin manager? [y/N] ")
         print(f"Continuing from digital-twin-manager deployment: {deployment_name}")
-        manager_succeeded = _run_digital_twin_manager_safely(config, deployment_name)
+        manager_succeeded = _run_digital_twin_manager_action_safely(config, "deploy", deployment_name)
         if run_federation and manager_succeeded:
             _run_federation_safely(config)
         return
@@ -774,6 +950,16 @@ def _is_continue_digital_twin_manager(value: str) -> bool:
     return matched
 
 
+def _is_plan_digital_twin_manager(value: str) -> bool:
+    matched, _ = _digital_twin_manager_command_target(value, PLAN_DIGITAL_TWIN_MANAGER_ALIASES)
+    return matched
+
+
+def _is_apply_digital_twin_manager(value: str) -> bool:
+    matched, _ = _digital_twin_manager_command_target(value, APPLY_DIGITAL_TWIN_MANAGER_ALIASES)
+    return matched
+
+
 def _is_destroy_digital_twin_manager(value: str) -> bool:
     matched, _ = _digital_twin_manager_command_target(value, DESTROY_DIGITAL_TWIN_MANAGER_ALIASES)
     return matched
@@ -809,6 +995,8 @@ def _print_commands() -> None:
     print("- continue sysml-v1              Run staged digital-twin-profile-sysml-v1 input.")
     print("- continue sysml-v2 [file]       Run one staged digital-twin-profile-sysml-v2 input.")
     print("- continue digital-twin-manager [name]  Deploy a saved digital-twin-manager input.")
+    print("- plan digital-twin-manager [name]      Plan changes to a saved digital-twin-manager deployment.")
+    print("- apply digital-twin-manager [name]     Apply its saved digital-twin-manager plan.")
     print("- destroy digital-twin-manager [name]   Destroy a saved digital-twin-manager deployment.")
     print("- continue fed-sysml  Resume from the fed-sysml step using staged manager output.")
     print("- fed terraform plan  Run Terraform init and plan for generated fed-sysml output.")

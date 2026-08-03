@@ -191,12 +191,14 @@ not happen, and the generated ID must not be committed.
 | Converter output             | `digital-twin-manager/input`                                  |
 | Manager input                | `digital-twin-manager/deployments/<Twin>/input`               |
 | Manager deploy               | `digital-twin-manager/output` and `deployments/<Twin>/output` |
+| Manager plan/apply           | Redeployment state in the matching manager output snapshot   |
 | Saved manager outputs        | `fed-sysml/input/strategyInputs`                              |
 | Federation config and inputs | `fed-sysml/output`                                            |
 
-Manager deployment output can contain IoT private keys. Federation output can
-contain Terraform state, plans, downloaded providers, account identifiers, and
-Lambda archives. All of these paths are ignored.
+Manager deployment output can contain IoT private keys, redeployment state, and
+saved plans. Federation output can contain Terraform state, plans, downloaded
+providers, account identifiers, and Lambda archives. All of these paths are
+ignored.
 
 ## Interactive Commands
 
@@ -208,6 +210,8 @@ Type commands in the terminal running `python run_pipeline.py`.
 | `continue sysml-v1`                    | Run the staged v1 converter input.                  |
 | `continue sysml-v2 [file]`             | Run a staged v2 model; omit the file for a menu.    |
 | `continue digital-twin-manager [name]` | Deploy a saved twin input.                          |
+| `plan digital-twin-manager [name]`     | Plan changes to a deployed twin.                    |
+| `apply digital-twin-manager [name]`    | Confirm and apply its saved plan.                   |
 | `destroy digital-twin-manager [name]`  | Destroy a saved twin deployment.                    |
 | `continue fed-sysml`                   | Build federation output from saved manager outputs. |
 | `fed terraform plan`                   | Initialize and plan generated Terraform.            |
@@ -219,7 +223,7 @@ Type commands in the terminal running `python run_pipeline.py`.
 | `stop grafana`                         | Stop local Grafana.                                 |
 | `exit`                                 | Stop the watcher.                                   |
 
-## Deploy and Federate
+## Deploy, Update, and Federate
 
 After conversion, manager configs are available locally in:
 
@@ -235,7 +239,23 @@ continue digital-twin-manager Battery2
 destroy digital-twin-manager Battery2
 ```
 
-Before federation, deploy every twin referenced by the local
+After changing and regenerating the input for an already deployed twin, create
+and apply a redeployment plan:
+
+```text
+plan digital-twin-manager Battery2
+apply digital-twin-manager Battery2
+```
+
+The plan and last-applied manager state are kept under the selected twin's
+`deployments/<Twin>/output/.digital-twin-manager-state` snapshot. `apply`
+requires a successful `plan` for the same twin and asks for confirmation before
+changing AWS resources.
+
+Older deployment snapshots without this state must first be initialized with
+the manager's `init-state` command while using the unchanged deployed config.
+
+Before federation, deploy or update every twin referenced by the local
 `pipeline/fed-sysml/input/fedtwin.json`, then run:
 
 ```text
@@ -312,3 +332,12 @@ and service provisioning. Do not commit:
 
 If a generated file is needed for debugging, keep it local or attach it to an
 issue/artifact store instead of force-adding it to the repository.
+
+## Tools used in the pipeline
+
+- [Enterprise Architect](https://github.com/EugenBodanov/enterprise-architect)
+- [XML to JSON Adapter](https://github.com/EugenBodanov/SysML2CMAdapter)
+- [SYSML to JSON Adapter](https://github.com/EugenBodanov/DigitalTwinProfileSysMLv2)
+- [AWS Deployer](https://github.com/EugenBodanov/digital-twin-manager)
+- [Digital Twin Federation Tool](https://github.com/EugenBodanov/FedSysML)
+- [Digital Twin Data Simulator](https://github.com/EugenBodanov/CloudDeployerTestSimulator)
