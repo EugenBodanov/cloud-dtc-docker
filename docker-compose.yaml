@@ -3,7 +3,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/enterprise-architect-wine:v1
+    image: evbodanov/enterprise-architect-wine:latest
     container_name: enterprise-architect
     shm_size: "1gb"
     ports:
@@ -37,7 +37,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/fed-sysml:v1
+    image: evbodanov/fed-sysml:latest
     container_name: fed-sysml
     environment:
       AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
@@ -57,7 +57,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/digital-twin-profile-sysml-v1:v1
+    image: evbodanov/digital-twin-profile-sysml-v1:latest
     container_name: digital-twin-profile-sysml-v1
     environment:
       DTP_PATH_MAP: "${DTP_PATH_MAP:-}"
@@ -73,7 +73,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/digital-twin-profile-sysml-v2:v1
+    image: evbodanov/digital-twin-profile-sysml-v2:latest
     container_name: digital-twin-profile-sysml-v2
     depends_on:
       - sysml-kernel
@@ -95,7 +95,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/digital-twin-manager:v1
+    image: evbodanov/digital-twin-manager:latest
     container_name: digital-twin-manager
     stdin_open: true
     tty: true
@@ -113,7 +113,7 @@ services:
         target: /pipeline/code
   cloud-deployer-test-simulator:
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: evbodanov/cloud-deployer-test-simulator:v1
+    image: evbodanov/cloud-deployer-test-simulator:latest
     profiles:
       - simulator
     environment:
