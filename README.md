@@ -20,7 +20,8 @@ The canonical inputs are:
 
 ```text
 demo-code/
-  microgrid/                               Lambda source code
+  coffee-machine/                          CoffeeTwin actuator Lambda source code
+  microgrid/                               Microgrid Lambda source code
 
 pipeline/
   enterprise-architect/
@@ -38,6 +39,7 @@ pipeline/
   digital-twin-profile-sysml-v2/
     input/                                 Tracked SysML v2 source models
       Battery2.sysml
+      CoffeeMachine.sysml
       PV2.sysml
       dtc-s-bat.sysml
       dtc-s-pv.sysml
@@ -170,8 +172,13 @@ Run a selected model from the active orchestrator:
 
 ```text
 continue sysml-v2 Battery2.sysml
+continue sysml-v2 CoffeeMachine.sysml
 continue sysml-v2 dtc-s-pv.sysml
 ```
+
+`CoffeeMachine.sysml` references the four deployable actuator handlers under
+`demo-code/coffee-machine`. The handlers return `command` and `reason`; the
+model forwards that action result to the target actuator through MQTT feedback.
 
 The orchestrator copies the selected file to the ignored `run-input` directory,
 runs the v2 converter, and stages the generated manager configs.
