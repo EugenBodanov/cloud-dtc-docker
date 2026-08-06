@@ -1,44 +1,53 @@
-*
-
-!.gitignore
-!README.md
-!PIPELINE_STATE_DIAGRAM.md
-!docker-compose.yaml
-!orchestrator_config.json
-!run_pipeline
-!run_pipeline.py
-
-!scripts/
-!scripts/**
-
-!tests/
-!tests/**
-
-!enterprise-architect/
-!enterprise-architect/projects/
-!enterprise-architect/projects/DemoProject.qea
-!enterprise-architect/projects/Matisse_1.qeax
-
-!demo-code/
-!demo-code/**
-demo-code/microgrid/stopCharging/zipped.zip
-
-!pipeline/
-!pipeline/enterprise-architect/
-!pipeline/enterprise-architect/input/
-!pipeline/enterprise-architect/input/demo_model.xml
-!pipeline/enterprise-architect/output/
-!pipeline/enterprise-architect/output/demo_export_1.xml
-!pipeline/enterprise-architect/output/demo_export_1.sysml
-!pipeline/fed-sysml/
-!pipeline/fed-sysml/input/
-pipeline/fed-sysml/input/*
-!pipeline/fed-sysml/input/brokerConfig.example.json
-!pipeline/fed-sysml/input/fedtwin.example.json
+# Local configuration and secrets
+.env
+.env.*
 !.env.example
+*.key
+**/config_credentials.json
 
-!pipeline/digital-twin-profile-sysml-v2/
-!pipeline/digital-twin-profile-sysml-v2/input/
-!pipeline/digital-twin-profile-sysml-v2/input/*
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
 
-**/__pycache__/
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated Lambda deployment bundles
+demo-code/**/zipped.zip
+
+# Enterprise Architect exports
+pipeline/enterprise-architect/output/
+
+# Converter staging and output
+pipeline/digital-twin-profile-sysml-v1/input/
+pipeline/digital-twin-profile-sysml-v1/output/
+pipeline/digital-twin-profile-sysml-v2/output/
+pipeline/digital-twin-profile-sysml-v2/run-input/
+
+# Digital twin manager runtime state and credentials
+pipeline/digital-twin-manager/input/*
+!pipeline/digital-twin-manager/input/config_providers.json
+pipeline/digital-twin-manager/output/
+pipeline/digital-twin-manager/deployments/
+
+# Federation local configuration, staging, and generated infrastructure
+pipeline/fed-sysml/input/brokerConfig.json
+pipeline/fed-sysml/input/fedtwin.json
+pipeline/fed-sysml/input/strategyInputs/
+pipeline/fed-sysml/output/
+
+# Local service state
+pipeline/grafana/grafana.json
+
+# Terraform runtime files, including generated directories outside pipeline/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

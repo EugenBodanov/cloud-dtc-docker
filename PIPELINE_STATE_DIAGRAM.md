@@ -8,6 +8,8 @@ stateDiagram-v2
     state "Manager configs ready" as Configs
     state "Deploy digital twin" as Deploy
     state "Digital twin deployed" as Deployed
+    state "Plan digital twin changes" as ManagerPlan
+    state "Apply saved digital twin plan" as ManagerApply
     state "Run federation" as Federation
     state "Run Terraform" as Terraform
 
@@ -21,6 +23,10 @@ stateDiagram-v2
     Deploy --> Deployed: output saved
 
     Deployed --> Watch: stop here
+    Watch --> ManagerPlan: plan digital-twin-manager [name]
+    ManagerPlan --> Watch: plan saved with deployment output
+    Watch --> ManagerApply: apply digital-twin-manager [name]
+    ManagerApply --> Watch: state and output updated
     Deployed --> Federation: optional
     Federation --> Watch: output generated
     Federation --> Terraform: optional
@@ -32,6 +38,7 @@ stateDiagram-v2
         Useful commands:
         continue sysml-v2 [file]
         continue digital-twin-manager [name]
+        plan/apply digital-twin-manager [name]
         continue fed-sysml
         start/stop simulator [name]
         start/stop grafana

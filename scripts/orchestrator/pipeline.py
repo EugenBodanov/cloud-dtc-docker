@@ -7,8 +7,10 @@ from .docker_compose import (
     remove_cloud_deployer_test_simulator,
     remove_local_grafana,
     run_converter,
+    run_manager_apply,
     run_manager_destroy,
     run_manager_deploy,
+    run_manager_plan,
     run_fed_sysml,
     run_fed_sysml_terraform_apply_plan,
     run_fed_sysml_terraform_destroy,
@@ -37,6 +39,7 @@ from .staging import (
     delete_local_grafana_state,
     find_converter_output,
     has_config_set,
+    invalidate_manager_deployment_plan,
     list_simulator_states,
     local_grafana_project_name,
     prepare_manager_stage,
@@ -47,12 +50,16 @@ from .staging import (
     print_manager_outputs,
     print_text_files,
     read_existing_manager_credentials,
+    read_existing_manager_providers,
     read_local_grafana_state,
     read_simulator_state,
     require_manager_deployment_simulator_input,
+    require_manager_redeployment_state,
     restore_manager_deployment_input,
+    restore_manager_deployment_output,
     save_manager_deployment_input,
     save_manager_deployment_output,
+    save_manager_deployment_plan,
     select_staged_converter_input,
     simulator_project_name,
     stage_converter_input,
@@ -111,7 +118,7 @@ def run_pipeline(config: PipelineConfig, *, source: Path, converter: str) -> Non
         print("\nStopped before AWS deploy. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
         return
 
-    run_digital_twin_manager_stage(config)
+    run_digital_twin_manager_deploy_stage(config)
 
     if not config.run_federation_workflow:
         print("\nStopped before federation workflow. Manager output is ready in " + relative_to_repo(MANAGER_OUTPUT_DIR))
@@ -161,17 +168,19 @@ def run_staged_converter_stage(config: PipelineConfig, *, converter: str, select
         print_config_set("converter output", converter_output)
 
     stage_digital_twin_manager_input(config, converter_output)
-    print("\nStopped after converter. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
+    print("\nConverter completed. Manager configs are ready in " + relative_to_repo(MANAGER_INPUT_DIR))
 
 
 def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: Path) -> None:
     saved_credentials = None
     if not config.aws_credentials_file:
         saved_credentials = read_existing_manager_credentials()
+    saved_providers = read_existing_manager_providers()
 
     prepare_manager_stage(
         clean_stage=config.clean_stage,
         keep_credentials=saved_credentials,
+        keep_providers=saved_providers,
     )
     copy_configs_to_manager(converter_output, config.aws_credentials_file)
     save_manager_deployment_input()
@@ -180,7 +189,7 @@ def stage_digital_twin_manager_input(config: PipelineConfig, converter_output: P
         print_config_set("digital-twin-manager input", MANAGER_INPUT_DIR)
 
 
-def run_digital_twin_manager_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
+def run_digital_twin_manager_deploy_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
     compose_file = resolve_repo_path(config.compose_file)
     if not compose_file.is_file():
         fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
@@ -197,6 +206,55 @@ def run_digital_twin_manager_stage(config: PipelineConfig, deployment_name: str 
         build_images=config.build_images,
         show_container_logs=config.show_container_logs,
     )
+    save_manager_deployment_output()
+    print_manager_outputs()
+
+
+def run_digital_twin_manager_plan_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    if deployment_name:
+        restore_manager_deployment_input(deployment_name)
+        restore_manager_deployment_output(deployment_name)
+
+    _require_manager_input()
+    require_manager_redeployment_state()
+    invalidate_manager_deployment_plan(deployment_name)
+
+    run_manager_plan(
+        compose_file=compose_file,
+        profiles=config.compose_profiles,
+        build_images=config.build_images,
+        show_container_logs=config.show_container_logs,
+    )
+    save_manager_deployment_plan()
+
+
+def run_digital_twin_manager_apply_stage(config: PipelineConfig, deployment_name: str | None = None) -> None:
+    compose_file = resolve_repo_path(config.compose_file)
+    if not compose_file.is_file():
+        fail(f"Docker Compose file does not exist: {relative_to_repo(compose_file)}")
+
+    if deployment_name:
+        restore_manager_deployment_input(deployment_name)
+        restore_manager_deployment_output(deployment_name, require_plan=True)
+
+    _require_manager_input()
+    require_manager_redeployment_state(require_plan=True)
+
+    try:
+        run_manager_apply(
+            compose_file=compose_file,
+            profiles=config.compose_profiles,
+            build_images=config.build_images,
+            show_container_logs=config.show_container_logs,
+        )
+    except SystemExit:
+        save_manager_deployment_plan()
+        raise
+
     save_manager_deployment_output()
     print_manager_outputs()
 

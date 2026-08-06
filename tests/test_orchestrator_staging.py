@@ -4,8 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from scripts.orchestrator import pipeline as orchestrator_pipeline
 from scripts.orchestrator import staging
 
 
@@ -114,6 +116,20 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.write_json(directory / "config_iot_devices.json", [])
         self.write_json(directory / "config_events.json", [])
 
+    def write_manager_redeployment_state(self, output_dir: Path, twin_name: str, *, include_plan: bool) -> Path:
+        state_dir = output_dir / staging.MANAGER_STATE_DIR_NAME
+        self.write_json(
+            state_dir / staging.MANAGER_STATE_METADATA_FILE_NAME,
+            {"digitalTwinName": twin_name, "stateVersion": 1},
+        )
+        self.write_manager_config_set(state_dir / staging.MANAGER_STATE_CONFIG_DIR_NAME, twin_name)
+        if include_plan:
+            self.write_json(
+                state_dir / staging.MANAGER_STATE_PLAN_FILE_NAME,
+                [{"group": "core", "layers": []}],
+            )
+        return state_dir
+
     def test_required_twins_accepts_one_twin_with_multiple_strategies(self) -> None:
         fedtwin = self.write_fedtwin(["dtc-y-03.stopCharging", "dtc-y-03.stopChargingP14"])
 
@@ -194,6 +210,26 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.assertTrue((saved_input / "config_credentials.json").is_file())
         self.assertEqual(staging.list_manager_deployments(), ["PV"])
 
+    def test_stage_manager_input_preserves_credentials_and_providers_when_cleaning(self) -> None:
+        credentials = b'{"aws_region": "eu-central-1"}'
+        providers = b'{"layer_1_provider": "aws"}'
+        (self.manager_input / "config_credentials.json").write_bytes(credentials)
+        (self.manager_input / "config_providers.json").write_bytes(providers)
+        (self.manager_input / "stale.json").write_text("{}", encoding="utf-8")
+        converter_output = self.pipeline_root / "converter-output"
+        self.write_manager_config_set(converter_output, "PV")
+
+        orchestrator_pipeline.stage_digital_twin_manager_input(
+            SimpleNamespace(aws_credentials_file=None, clean_stage=True, show_configs=False),
+            converter_output,
+        )
+
+        self.assertEqual((self.manager_input / "config_credentials.json").read_bytes(), credentials)
+        self.assertEqual((self.manager_input / "config_providers.json").read_bytes(), providers)
+        self.assertFalse((self.manager_input / "stale.json").exists())
+        saved_input = self.manager_deployments / "PV" / "input"
+        self.assertEqual((saved_input / "config_providers.json").read_bytes(), providers)
+
     def test_save_manager_deployment_output_preserves_saved_input(self) -> None:
         self.write_manager_config_set(self.manager_input, "PV")
         staging.save_manager_deployment_input()
@@ -228,6 +264,82 @@ class OrchestratorStagingTests(unittest.TestCase):
         self.assertEqual(restored_input, self.manager_input)
         self.assertTrue((self.manager_input / "config.json").is_file())
         self.assertFalse((self.manager_input / "stale.json").exists())
+
+    def test_restore_manager_deployment_output_restores_state_and_saved_plan(self) -> None:
+        deployment_dir = self.manager_deployments / "PV"
+        self.write_manager_config_set(deployment_dir / "input", "PV")
+        self.write_json(deployment_dir / "output" / "PV_federation_input.json", {"name": "PV"})
+        self.write_manager_redeployment_state(deployment_dir / "output", "PV", include_plan=True)
+        self.write_json(self.manager_output / "stale.json", {"stale": True})
+
+        restored_output = staging.restore_manager_deployment_output("pv", require_plan=True)
+
+        self.assertEqual(restored_output, self.manager_output)
+        self.assertTrue((self.manager_output / "PV_federation_input.json").is_file())
+        self.assertTrue(
+            (
+                self.manager_output
+                / staging.MANAGER_STATE_DIR_NAME
+                / staging.MANAGER_STATE_PLAN_FILE_NAME
+            ).is_file()
+        )
+        self.assertFalse((self.manager_output / "stale.json").exists())
+
+    def test_restore_manager_deployment_output_requires_plan_for_apply(self) -> None:
+        deployment_dir = self.manager_deployments / "PV"
+        self.write_manager_config_set(deployment_dir / "input", "PV")
+        self.write_manager_redeployment_state(deployment_dir / "output", "PV", include_plan=False)
+
+        with self.assertRaises(SystemExit):
+            staging.restore_manager_deployment_output("PV", require_plan=True)
+
+    def test_restore_manager_deployment_output_rejects_empty_plan_for_apply(self) -> None:
+        deployment_dir = self.manager_deployments / "PV"
+        self.write_manager_config_set(deployment_dir / "input", "PV")
+        state_dir = self.write_manager_redeployment_state(deployment_dir / "output", "PV", include_plan=True)
+        self.write_json(state_dir / staging.MANAGER_STATE_PLAN_FILE_NAME, [])
+
+        with self.assertRaises(SystemExit):
+            staging.restore_manager_deployment_output("PV", require_plan=True)
+
+    def test_restore_manager_deployment_output_rejects_state_for_another_twin(self) -> None:
+        deployment_dir = self.manager_deployments / "PV"
+        self.write_manager_config_set(deployment_dir / "input", "PV")
+        self.write_manager_redeployment_state(deployment_dir / "output", "Battery", include_plan=True)
+
+        with self.assertRaises(SystemExit):
+            staging.restore_manager_deployment_output("PV", require_plan=True)
+
+    def test_save_manager_deployment_plan_copies_current_output_snapshot(self) -> None:
+        self.write_manager_config_set(self.manager_input, "PV")
+        self.write_json(self.manager_output / "PV_federation_input.json", {"name": "PV"})
+        self.write_manager_redeployment_state(self.manager_output, "PV", include_plan=True)
+
+        saved_plan = staging.save_manager_deployment_plan()
+
+        self.assertEqual(
+            saved_plan,
+            self.manager_deployments
+            / "PV"
+            / "output"
+            / staging.MANAGER_STATE_DIR_NAME
+            / staging.MANAGER_STATE_PLAN_FILE_NAME,
+        )
+        self.assertTrue(saved_plan.is_file())
+        self.assertTrue((saved_plan.parents[1] / "PV_federation_input.json").is_file())
+
+    def test_invalidate_manager_deployment_plan_removes_current_and_saved_plans(self) -> None:
+        deployment_dir = self.manager_deployments / "PV"
+        self.write_manager_config_set(deployment_dir / "input", "PV")
+        current_state = self.write_manager_redeployment_state(self.manager_output, "PV", include_plan=True)
+        saved_state = self.write_manager_redeployment_state(deployment_dir / "output", "PV", include_plan=True)
+
+        staging.invalidate_manager_deployment_plan("pv")
+
+        self.assertFalse((current_state / staging.MANAGER_STATE_PLAN_FILE_NAME).exists())
+        self.assertFalse((saved_state / staging.MANAGER_STATE_PLAN_FILE_NAME).exists())
+        self.assertTrue((current_state / staging.MANAGER_STATE_METADATA_FILE_NAME).is_file())
+        self.assertTrue((saved_state / staging.MANAGER_STATE_METADATA_FILE_NAME).is_file())
 
     def test_simulator_project_name_is_deterministic_and_safe(self) -> None:
         project_name = staging.simulator_project_name("dtc-y-03")

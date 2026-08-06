@@ -35,6 +35,10 @@ FEDERATION_TERRAFORM_STATE_ENTRIES = {
     "terraform.tfstate",
     "terraform.tfstate.backup",
 }
+MANAGER_STATE_DIR_NAME = ".digital-twin-manager-state"
+MANAGER_STATE_CONFIG_DIR_NAME = "configs"
+MANAGER_STATE_METADATA_FILE_NAME = "metadata.json"
+MANAGER_STATE_PLAN_FILE_NAME = "plan.json"
 SIMULATOR_STATE_FILE = "simulator.json"
 SIMULATOR_PORT_START = 5000
 SIMULATOR_PORT_END = 5999
@@ -140,7 +144,12 @@ def find_converter_output(converter: str, *, generated_twin_dir: str | None) -> 
     return sorted_candidates[0]
 
 
-def prepare_manager_stage(*, clean_stage: bool, keep_credentials: bytes | None) -> None:
+def prepare_manager_stage(
+    *,
+    clean_stage: bool,
+    keep_credentials: bytes | None,
+    keep_providers: bytes | None,
+) -> None:
     if clean_stage:
         clean_pipeline_dir(MANAGER_INPUT_DIR)
         clean_pipeline_dir(MANAGER_OUTPUT_DIR)
@@ -150,6 +159,9 @@ def prepare_manager_stage(*, clean_stage: bool, keep_credentials: bytes | None) 
 
     if keep_credentials is not None:
         (MANAGER_INPUT_DIR / "config_credentials.json").write_bytes(keep_credentials)
+
+    if keep_providers is not None:
+        (MANAGER_INPUT_DIR / "config_providers.json").write_bytes(keep_providers)
 
 
 def prepare_federation_stage(*, clean_stage: bool) -> None:
@@ -183,6 +195,13 @@ def read_existing_manager_credentials() -> bytes | None:
     credentials = MANAGER_INPUT_DIR / "config_credentials.json"
     if credentials.is_file():
         return credentials.read_bytes()
+    return None
+
+
+def read_existing_manager_providers() -> bytes | None:
+    providers = MANAGER_INPUT_DIR / "config_providers.json"
+    if providers.is_file():
+        return providers.read_bytes()
     return None
 
 
@@ -241,15 +260,48 @@ def save_manager_deployment_output() -> Path:
             f"Expected {relative_to_repo(federation_input)}."
         )
 
-    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name / "output"
-
-    def skip_stale_federation_input(path: Path) -> bool:
-        return path.name.endswith("_federation_input.json") and path.name != federation_input.name
-
-    _copy_directory_contents_clean(MANAGER_OUTPUT_DIR, target_dir, skip=skip_stale_federation_input)
+    target_dir = _save_manager_output_snapshot(twin_name)
     saved_federation_input = target_dir / federation_input.name
     print(f"Saved digital-twin-manager deployment output: {relative_to_repo(saved_federation_input)}")
     return saved_federation_input
+
+
+def save_manager_deployment_plan() -> Path:
+    twin_name = read_manager_input_twin_name()
+    require_manager_redeployment_state(require_plan=True)
+    target_dir = _save_manager_output_snapshot(twin_name)
+    saved_plan = target_dir / MANAGER_STATE_DIR_NAME / MANAGER_STATE_PLAN_FILE_NAME
+    print(f"Saved digital-twin-manager deployment plan: {relative_to_repo(saved_plan)}")
+    return saved_plan
+
+
+def invalidate_manager_deployment_plan(twin_name: str | None = None) -> None:
+    plan_paths = [MANAGER_OUTPUT_DIR / MANAGER_STATE_DIR_NAME / MANAGER_STATE_PLAN_FILE_NAME]
+    if twin_name:
+        deployment_name = resolve_manager_deployment_name(twin_name)
+        plan_paths.append(
+            MANAGER_DEPLOYMENTS_DIR
+            / deployment_name
+            / "output"
+            / MANAGER_STATE_DIR_NAME
+            / MANAGER_STATE_PLAN_FILE_NAME
+        )
+
+    for plan_path in plan_paths:
+        if plan_path.is_file():
+            plan_path.unlink()
+            print(f"Invalidated previous digital-twin-manager plan: {relative_to_repo(plan_path)}")
+
+
+def _save_manager_output_snapshot(twin_name: str) -> Path:
+    target_dir = MANAGER_DEPLOYMENTS_DIR / twin_name / "output"
+    expected_federation_input_name = f"{twin_name}_federation_input.json"
+
+    def skip_stale_federation_input(path: Path) -> bool:
+        return path.name.endswith("_federation_input.json") and path.name != expected_federation_input_name
+
+    _copy_directory_contents_clean(MANAGER_OUTPUT_DIR, target_dir, skip=skip_stale_federation_input)
+    return target_dir
 
 
 def save_manager_deployment_artifact() -> Path:
@@ -268,6 +320,80 @@ def restore_manager_deployment_input(twin_name: str) -> Path:
     _copy_directory_contents_clean(source_dir, MANAGER_INPUT_DIR)
     print(f"Restored digital-twin-manager input from deployment: {relative_to_repo(source_dir)}")
     return MANAGER_INPUT_DIR
+
+
+def restore_manager_deployment_output(twin_name: str, *, require_plan: bool = False) -> Path:
+    deployment_name = resolve_manager_deployment_name(twin_name)
+    source_dir = MANAGER_DEPLOYMENTS_DIR / deployment_name / "output"
+    _require_manager_redeployment_state(
+        source_dir,
+        deployment_name,
+        require_plan=require_plan,
+    )
+
+    _copy_directory_contents_clean(source_dir, MANAGER_OUTPUT_DIR)
+    print(f"Restored digital-twin-manager output from deployment: {relative_to_repo(source_dir)}")
+    return MANAGER_OUTPUT_DIR
+
+
+def require_manager_redeployment_state(*, require_plan: bool = False) -> Path:
+    twin_name = read_manager_input_twin_name()
+    return _require_manager_redeployment_state(
+        MANAGER_OUTPUT_DIR,
+        twin_name,
+        require_plan=require_plan,
+    )
+
+
+def _require_manager_redeployment_state(
+    output_dir: Path,
+    twin_name: str,
+    *,
+    require_plan: bool,
+) -> Path:
+    state_dir = output_dir / MANAGER_STATE_DIR_NAME
+    state_config_dir = state_dir / MANAGER_STATE_CONFIG_DIR_NAME
+    required_state_paths = [
+        state_dir / MANAGER_STATE_METADATA_FILE_NAME,
+        *(state_config_dir / file_name for file_name in CONFIG_FILES),
+    ]
+    missing_state_paths = [path for path in required_state_paths if not path.is_file()]
+    if missing_state_paths:
+        missing = ", ".join(relative_to_repo(path) for path in missing_state_paths)
+        fail(
+            f"digital-twin-manager redeployment state for twin '{twin_name}' is missing or incomplete. "
+            f"Missing: {missing}. Use digital-twin-manager 'init-state' for existing AWS resources, "
+            "or complete a fresh deploy before running plan/apply."
+        )
+
+    metadata_path = state_dir / MANAGER_STATE_METADATA_FILE_NAME
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"digital-twin-manager state metadata is not valid JSON: {relative_to_repo(metadata_path)} ({error})")
+    if not isinstance(metadata, dict) or metadata.get("digitalTwinName") != twin_name:
+        fail(
+            f"digital-twin-manager state under {relative_to_repo(output_dir)} does not belong to twin '{twin_name}'."
+        )
+
+    plan_path = state_dir / MANAGER_STATE_PLAN_FILE_NAME
+    if require_plan and not plan_path.is_file():
+        fail(
+            f"Saved digital-twin-manager plan for twin '{twin_name}' is missing. "
+            f"Expected {relative_to_repo(plan_path)}. Run 'plan digital-twin-manager {twin_name}' first."
+        )
+    if require_plan:
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            fail(f"Saved digital-twin-manager plan is not valid JSON: {relative_to_repo(plan_path)} ({error})")
+        if not isinstance(plan, list) or not plan:
+            fail(
+                f"Saved digital-twin-manager plan for twin '{twin_name}' is empty or invalid. "
+                f"Run 'plan digital-twin-manager {twin_name}' again."
+            )
+
+    return state_dir
 
 
 def resolve_manager_deployment_name(twin_name: str) -> str:
