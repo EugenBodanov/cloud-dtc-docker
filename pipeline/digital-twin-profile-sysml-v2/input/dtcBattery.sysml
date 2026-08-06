@@ -103,11 +103,11 @@ package dtcBattery {
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute maxChargingPower {
-                :>> value default "22.0";
+                :>> value default "10.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute maxDischargingPower {
-                :>> value default "22.0";
+                :>> value default "10.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             // PV production level (kW) at which the battery treats generation as

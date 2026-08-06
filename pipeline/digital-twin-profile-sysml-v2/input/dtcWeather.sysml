@@ -41,19 +41,19 @@ package dtcWeather {
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour06 {
-                :>> value default "3.0";
+                :>> value default "0.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour07 {
-                :>> value default "10.0";
+                :>> value default "5.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour08 {
-                :>> value default "25.0";
+                :>> value default "20.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour09 {
-                :>> value default "45.0";
+                :>> value default "40.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour10 {
@@ -61,11 +61,11 @@ package dtcWeather {
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour11 {
-                :>> value default "85.0";
+                :>> value default "80.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour12 {
-                :>> value default "95.0";
+                :>> value default "100.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour13 {
@@ -73,19 +73,19 @@ package dtcWeather {
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour14 {
-                :>> value default "98.0";
-                :>> dataType default AttributeDataType::DOUBLE;
-            }
-            #constAttribute hour15 {
                 :>> value default "85.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
+            #constAttribute hour15 {
+                :>> value default "70.0";
+                :>> dataType default AttributeDataType::DOUBLE;
+            }
             #constAttribute hour16 {
-                :>> value default "65.0";
+                :>> value default "50.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour17 {
-                :>> value default "40.0";
+                :>> value default "35.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour18 {
@@ -97,7 +97,7 @@ package dtcWeather {
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour20 {
-                :>> value default "2.0";
+                :>> value default "0.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute hour21 {

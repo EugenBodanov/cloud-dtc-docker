@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 
-from decision_logic import calculate_charging_power
+from decision_logic import calculate_power_split
 
 # Federation-owned Strategy Lambda for dtc-BatteryChargerDecisionStrategy.
 #
@@ -25,7 +25,11 @@ BATTERY_STORAGE_COMPONENT = os.environ.get("BATTERY_STORAGE_COMPONENT")
 BATTERY_EXTERNAL_INPUTS_COMPONENT = os.environ.get("BATTERY_EXTERNAL_INPUTS_COMPONENT")
 
 CHARGER_ACT_CHARGE_DEVICE_ID = os.environ.get("CHARGER_ACT_CHARGE_DEVICE_ID")
+# All three are #constAttribute values, injected from their deployed initValue by
+# the enablement step - consts are not collectible through the Collector.
 BATTERY_MAX_CHARGING_POWER = os.environ.get("BATTERY_MAX_CHARGING_POWER")
+BATTERY_MAX_DISCHARGING_POWER = os.environ.get("BATTERY_MAX_DISCHARGING_POWER")
+CHARGER_MAX_POWER = os.environ.get("CHARGER_MAX_POWER")
 
 STRATEGY_NAME = "dtc-BatteryChargerDecisionStrategy"
 TRIGGER_EVENT_NAME = "plugDecision"
@@ -47,6 +51,8 @@ REQUIRED_ENV = {
     "BATTERY_EXTERNAL_INPUTS_COMPONENT": BATTERY_EXTERNAL_INPUTS_COMPONENT,
     "CHARGER_ACT_CHARGE_DEVICE_ID": CHARGER_ACT_CHARGE_DEVICE_ID,
     "BATTERY_MAX_CHARGING_POWER": BATTERY_MAX_CHARGING_POWER,
+    "BATTERY_MAX_DISCHARGING_POWER": BATTERY_MAX_DISCHARGING_POWER,
+    "CHARGER_MAX_POWER": CHARGER_MAX_POWER,
 }
 
 
@@ -96,38 +102,46 @@ def lambda_handler(event, context):
     charge = _as_float(battery_storage.get("charge"))
     generated_power = _as_float(battery_inputs.get("generatedPower"))
     green_energy = _as_float(battery_inputs.get("greenEnergyPercentage"))
-    max_power = _as_float(battery_inputs.get("maxPower"))
+    grid_max_power = _as_float(battery_inputs.get("maxPower"))
     electricity_price = _as_float(grid_sensor.get("currentElectricityPrice"))
-    max_charging_power = _as_float(BATTERY_MAX_CHARGING_POWER)
 
-    act_charge_ev = calculate_charging_power(
-        generated_power=generated_power,
+    act_charge_ev, battery_charge_power = calculate_power_split(
         green_energy_percentage=green_energy,
-        electricity_price=electricity_price,
-        max_power=max_power,
-        max_charging_power=max_charging_power,
-        battery_charge=charge,
+        pv_production=generated_power,
+        grid_max_power=grid_max_power,
+        charger_max_power=_as_float(CHARGER_MAX_POWER),
+        battery_max_charging_power=_as_float(BATTERY_MAX_CHARGING_POWER),
+        battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
         is_plugged=is_plugged,
     )
 
+    # charge and electricityPrice are logged but deliberately NOT part of the
+    # decision - see decision_logic. The Grid price pull stays in place so the
+    # request/response federation keeps working exactly as before.
     print("DIAG inputs: " + json.dumps({
         "isPlugged": is_plugged, "charge": charge,
         "generatedPower": generated_power, "greenEnergyPercentage": green_energy,
-        "maxPower": max_power, "electricityPrice": electricity_price,
-        "maxChargingPower": max_charging_power,
+        "gridMaxPower": grid_max_power, "electricityPrice": electricity_price,
+        "chargerMaxPower": _as_float(CHARGER_MAX_POWER),
+        "batteryMaxCharging": _as_float(BATTERY_MAX_CHARGING_POWER),
+        "batteryMaxDischarging": _as_float(BATTERY_MAX_DISCHARGING_POWER),
     }))
-    print("DIAG actChargeEV: " + json.dumps(act_charge_ev))
+    print("DIAG actChargeEV: " + json.dumps(act_charge_ev)
+          + " | batteryChargePower: " + json.dumps(battery_charge_power))
 
     # Feedback publishes this to dtcCharger/iot-data; ingestion routes by
     # iotDeviceId to write dtcCharger.chargerState.actChargeEV. The
     # {"statusCode", "body": json.dumps(...)} envelope is REQUIRED - the shared
     # Feedback Lambda reads strategyResult["body"] as a JSON string.
+    # Both values ride in ONE message to the same Charger device - no extra
+    # traffic, and nothing is written back into dtcBattery.
     return {
         "statusCode": 200,
         "body": json.dumps({
             "iotDeviceId": CHARGER_ACT_CHARGE_DEVICE_ID,
             "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
             "actChargeEV": act_charge_ev,
+            "batteryChargePower": battery_charge_power,
         }),
     }
 

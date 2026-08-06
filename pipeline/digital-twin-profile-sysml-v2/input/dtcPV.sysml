@@ -52,7 +52,7 @@ package dtcPV {
             // materializes entity-level consts, as a generated const_component
             // (same as dtc2bat's trueValue/maxTemp).
             #constAttribute maxPower {
-                :>> value default "50.0";
+                :>> value default "10.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
         }

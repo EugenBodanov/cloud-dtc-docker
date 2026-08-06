@@ -42,7 +42,15 @@ GRID_PRICE_PROPERTY = "currentElectricityPrice"
 BATTERY_STORAGE_PROPERTY = "charge"
 BATTERY_EXTERNAL_INPUTS_PROPERTY = "generatedPower"
 CHARGER_ACT_CHARGE_PROPERTY = "actChargeEV"
-BATTERY_MAX_CHARGING_POWER_CONST = "maxChargingPower"
+# #constAttribute values read from their deployed initValue - consts cannot be
+# fetched through the Collector.
+BATTERY_CONSTS = {
+    "BATTERY_MAX_CHARGING_POWER": "maxChargingPower",
+    "BATTERY_MAX_DISCHARGING_POWER": "maxDischargingPower",
+}
+CHARGER_CONSTS = {
+    "CHARGER_MAX_POWER": "maxPower",
+}
 
 STRATEGY_NAME = "dtc-BatteryChargerDecisionStrategy"
 STRATEGY_FUNCTION_NAME = f"{STRATEGY_NAME}_strategy"
@@ -115,21 +123,28 @@ def discover_charger_act_charge_device_id() -> str:
     )
 
 
-def discover_battery_max_charging_power() -> str:
-    """maxChargingPower is a #constAttribute. Read its initValue from the deployed
-    config (the generated const_component), NOT from the runtime Collector -
-    consts are not collectible.
+def discover_consts(twin: str, wanted: dict) -> dict:
+    """Read #constAttribute initValues from a twin's deployed config.
+
+    Consts are not collectible at runtime, so their values are injected as env
+    vars instead (same reason PV_MAX_POWER is injected in fedPvWeatherRequest).
     """
-    devices = _load(BATTERY_TWIN_NAME, "input", "config_iot_devices.json")
+    devices = _load(twin, "input", "config_iot_devices.json")
+    found = {}
     for device in devices:
         for prop in device.get("properties", []):
-            if prop.get("name") == BATTERY_MAX_CHARGING_POWER_CONST and "initValue" in prop:
-                return str(prop["initValue"])
-    raise SystemExit(
-        f"No '{BATTERY_MAX_CHARGING_POWER_CONST}' const with an initValue found for "
-        f"'{BATTERY_TWIN_NAME}'. Ensure it is declared at the #entity level in "
-        "dtcBattery.sysml (constAttributes inside a #component are dropped)."
-    )
+            for env_name, const_name in wanted.items():
+                if prop.get("name") == const_name and "initValue" in prop:
+                    found[env_name] = str(prop["initValue"])
+
+    missing = [c for e, c in wanted.items() if e not in found]
+    if missing:
+        raise SystemExit(
+            f"No const with an initValue found for {missing} in '{twin}'. Ensure "
+            f"they are declared at the #entity level in {twin}.sysml "
+            "(constAttributes inside a #component are dropped) and redeploy."
+        )
+    return found
 
 
 # --------------------------------------------------------------------------- #
@@ -190,7 +205,8 @@ def main() -> None:
         "external_inputs": BATTERY_EXTERNAL_INPUTS_PROPERTY,
     })
     charger_device_id = discover_charger_act_charge_device_id()
-    max_charging_power = discover_battery_max_charging_power()
+    battery_consts = discover_consts(BATTERY_TWIN_NAME, BATTERY_CONSTS)
+    charger_consts = discover_consts(CHARGER_TWIN_NAME, CHARGER_CONSTS)
 
     try:
         import boto3
@@ -215,7 +231,8 @@ def main() -> None:
         "BATTERY_STORAGE_COMPONENT": battery["storage"],
         "BATTERY_EXTERNAL_INPUTS_COMPONENT": battery["external_inputs"],
         "CHARGER_ACT_CHARGE_DEVICE_ID": charger_device_id,
-        "BATTERY_MAX_CHARGING_POWER": max_charging_power,
+        **battery_consts,
+        **charger_consts,
     }
 
     # Grant first, then inject: once env is present the Strategy Lambda will
