@@ -113,11 +113,12 @@ def lambda_handler(event, context):
         battery_max_charging_power=_as_float(BATTERY_MAX_CHARGING_POWER),
         battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
         is_plugged=is_plugged,
+        electricity_price=electricity_price,
     )
 
-    # charge and electricityPrice are logged but deliberately NOT part of the
-    # decision - see decision_logic. The Grid price pull stays in place so the
-    # request/response federation keeps working exactly as before.
+    # charge is logged but deliberately NOT part of the decision - it is produced
+    # by the simulator and a stray low value would silently zero a scenario. The
+    # pulled price DOES take part now, but only in the green branch.
     print("DIAG inputs: " + json.dumps({
         "isPlugged": is_plugged, "charge": charge,
         "generatedPower": generated_power, "greenEnergyPercentage": green_energy,
@@ -127,21 +128,22 @@ def lambda_handler(event, context):
         "batteryMaxDischarging": _as_float(BATTERY_MAX_DISCHARGING_POWER),
     }))
     print("DIAG actChargeEV: " + json.dumps(act_charge_ev)
-          + " | batteryChargePower: " + json.dumps(battery_charge_power))
+          + " | actBatteryCharge: " + json.dumps(battery_charge_power))
 
     # Feedback publishes this to dtcCharger/iot-data; ingestion routes by
     # iotDeviceId to write dtcCharger.chargerState.actChargeEV. The
     # {"statusCode", "body": json.dumps(...)} envelope is REQUIRED - the shared
     # Feedback Lambda reads strategyResult["body"] as a JSON string.
-    # Both values ride in ONE message to the same Charger device - no extra
-    # traffic, and nothing is written back into dtcBattery.
+    # Both halves of the split ride in ONE message to the same Charger device:
+    # one federation, one calculation, one set of pulls. Nothing is written back
+    # into dtcBattery, so the decision cannot re-trigger itself.
     return {
         "statusCode": 200,
         "body": json.dumps({
             "iotDeviceId": CHARGER_ACT_CHARGE_DEVICE_ID,
             "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
             "actChargeEV": act_charge_ev,
-            "batteryChargePower": battery_charge_power,
+            "actBatteryCharge": battery_charge_power,
         }),
     }
 

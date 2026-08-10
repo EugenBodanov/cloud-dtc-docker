@@ -3,8 +3,8 @@
 
 The bulk of this federation is REAL fed-sysml: the fedtwin.json entry
 (referencing dtcBattery.plugDecision) makes `continue fed-sysml` +
-`fed terraform apply` generate the Event Registry trigger, Step Function,
-Collector, Strategy Lambda, Feedback Lambda and their IAM roles - all in
+`fed terraform apply` generate the Event Registry trigger, the pipeline Lambda
+(collector -> strategy -> feedback in one function) and its IAM role - all in
 Terraform.
 
 Three things fed-sysml structurally cannot express are supplied here, targeting
@@ -19,12 +19,16 @@ the FEDERATION-OWNED Strategy Lambda (never a twin):
   3. dtcBattery's #constAttribute maxChargingPower - consts are not collectible
      (same reason PV_MAX_POWER is env-injected in fedPvWeatherRequest).
 
-The fed-sysml Strategy Lambda + role names are deterministic
-(<strategyName>_strategy / <strategyName>_strategy-role), so no discovery is
+The fed-sysml Lambda + role names are deterministic
+(<strategyName>_pipeline / <strategyName>_pipeline-role), so no discovery is
 needed. Runs automatically at the end of `fed terraform apply` (see
 scripts/orchestrator/pipeline.py).
 
-    python scripts/federate_battery_charger_decision.py
+IMPORTANT: this must run after EVERY apply. Terraform declares the Lambda's
+environment with only PARAMETERS / FEEDBACK_TYPE / FEEDBACK_TOPIC, so each apply
+resets the variables injected here.
+
+    python3 scripts/federate_battery_charger_decision.py
 """
 from __future__ import annotations
 
@@ -52,9 +56,20 @@ CHARGER_CONSTS = {
     "CHARGER_MAX_POWER": "maxPower",
 }
 
-STRATEGY_NAME = "dtc-BatteryChargerDecisionStrategy"
-STRATEGY_FUNCTION_NAME = f"{STRATEGY_NAME}_strategy"
-STRATEGY_ROLE_NAME = f"{STRATEGY_NAME}_strategy-role"
+CHARGER_STRATEGY_NAME = "dtc-BatteryChargerDecisionStrategy"
+
+# fed-sysml generates ONE Lambda per federation, "<name>_pipeline", which calls
+# collector -> our strategy code -> feedback in-process. The IAM role follows the
+# same base name ("<name>_pipeline-role"). The older layout had three separate
+# Lambdas chained by a Step Function and used "<name>_strategy".
+def _function_name(strategy_name: str) -> str:
+    return f"{strategy_name}_pipeline"
+
+
+def _role_name(strategy_name: str) -> str:
+    return f"{strategy_name}_pipeline-role"
+
+
 INVOKE_POLICY_NAME = "battery-charger-decision-invoke"
 
 
@@ -150,27 +165,29 @@ def discover_consts(twin: str, wanted: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # AWS: enable the fed-sysml-generated Strategy Lambda
 # --------------------------------------------------------------------------- #
-def inject_env(lambda_client, new_env: dict) -> None:
+def inject_env(lambda_client, strategy_name: str, new_env: dict) -> None:
+    function_name = _function_name(strategy_name)
     try:
-        current = lambda_client.get_function_configuration(FunctionName=STRATEGY_FUNCTION_NAME)
+        current = lambda_client.get_function_configuration(FunctionName=function_name)
     except lambda_client.exceptions.ResourceNotFoundException:
         raise SystemExit(
-            f"Strategy Lambda '{STRATEGY_FUNCTION_NAME}' not found. Run "
-            "'continue fed-sysml' + 'fed terraform apply' first, then this step."
+            f"Lambda '{function_name}' not found. Run 'continue fed-sysml' + "
+            "'fed terraform apply' first, then this step."
         )
 
     variables = dict(current.get("Environment", {}).get("Variables", {}))
     variables.update(new_env)
     lambda_client.update_function_configuration(
-        FunctionName=STRATEGY_FUNCTION_NAME,
+        FunctionName=function_name,
         Environment={"Variables": variables},
     )
-    lambda_client.get_waiter("function_updated").wait(FunctionName=STRATEGY_FUNCTION_NAME)
-    print(f"Injected env vars into {STRATEGY_FUNCTION_NAME}")
+    lambda_client.get_waiter("function_updated").wait(FunctionName=function_name)
+    print(f"Injected env vars into {function_name}")
 
 
-def grant_invoke(iam, hot_reader_arns: list) -> None:
-    """Scope InvokeFunction to exactly the hot-readers this Strategy reads."""
+def grant_invoke(iam, strategy_name: str, hot_reader_arns: list) -> None:
+    """Scope InvokeFunction to exactly the hot-readers this Lambda reads."""
+    role_name = _role_name(strategy_name)
     policy = {
         "Version": "2012-10-17",
         "Statement": [{
@@ -181,23 +198,23 @@ def grant_invoke(iam, hot_reader_arns: list) -> None:
     }
     try:
         iam.put_role_policy(
-            RoleName=STRATEGY_ROLE_NAME,
+            RoleName=role_name,
             PolicyName=INVOKE_POLICY_NAME,
             PolicyDocument=json.dumps(policy),
         )
     except iam.exceptions.NoSuchEntityException:
         raise SystemExit(
-            f"Strategy role '{STRATEGY_ROLE_NAME}' not found. Run "
-            "'continue fed-sysml' + 'fed terraform apply' first."
+            f"Role '{role_name}' not found. Run 'continue fed-sysml' + "
+            "'fed terraform apply' first."
         )
-    print(f"Granted lambda:InvokeFunction on {hot_reader_arns} to {STRATEGY_ROLE_NAME}")
+    print(f"Granted lambda:InvokeFunction on {hot_reader_arns} to {role_name}")
 
 
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 def main() -> None:
-    print("Running Battery->Charger decision federation enablement step...")
+    print("Running Battery charging-decision federation enablement step...")
 
     grid = discover_twin_components(GRID_TWIN_NAME, {"sensor": GRID_PRICE_PROPERTY})
     battery = discover_twin_components(BATTERY_TWIN_NAME, {
@@ -230,17 +247,21 @@ def main() -> None:
         "BATTERY_ENTITY_ID": battery["entity_id"],
         "BATTERY_STORAGE_COMPONENT": battery["storage"],
         "BATTERY_EXTERNAL_INPUTS_COMPONENT": battery["external_inputs"],
+        # One target: both actChargeEV and actBatteryCharge go to the same
+        # Charger device, in the same feedback message.
         "CHARGER_ACT_CHARGE_DEVICE_ID": charger_device_id,
         **battery_consts,
         **charger_consts,
     }
 
-    # Grant first, then inject: once env is present the Strategy Lambda will
-    # attempt both pulls, so the permissions should already be in place.
-    grant_invoke(iam, [grid["hot_reader_arn"], battery["hot_reader_arn"]])
-    inject_env(lambda_client, env)
+    hot_readers = [grid["hot_reader_arn"], battery["hot_reader_arn"]]
 
-    print("Battery->Charger decision federation enablement complete.")
+    # Grant first, then inject: once env is present the Lambda will attempt both
+    # pulls, so the permissions should already be in place.
+    grant_invoke(iam, CHARGER_STRATEGY_NAME, hot_readers)
+    inject_env(lambda_client, CHARGER_STRATEGY_NAME, env)
+
+    print("Battery charging-decision federation enablement complete.")
 
 
 if __name__ == "__main__":

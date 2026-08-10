@@ -37,16 +37,12 @@ package dtcCharger {
                 #measureAttribute actChargeEV {
                     :>> dataType default AttributeDataType::DOUBLE;
                 }
-                // Power (kW) the BATTERY is charging itself with, decided together
-                // with actChargeEV and delivered in the same feedback message.
-                //
-                // It lives here rather than on dtcBattery on purpose: writing it
-                // back into dtcBattery would be a new message to that twin, and
-                // the deployed event-checker re-evaluates every condition on every
-                // message. Putting it in the same message as actChargeEV adds no
-                // new traffic at all. Move it to dtcBattery once the filtering
-                // event-checker is in place.
-                #measureAttribute batteryChargePower {
+                // Power (kW) the BATTERY is charging itself with. Decided together
+                // with actChargeEV and delivered in the SAME feedback message, so
+                // one federation covers both halves of the split - no second
+                // federation, no duplicated pulls, and nothing written back into
+                // dtcBattery.
+                #measureAttribute actBatteryCharge {
                     :>> dataType default AttributeDataType::DOUBLE;
                 }
             }

@@ -3,8 +3,8 @@
 
 The bulk of this federation is REAL fed-sysml: the fedtwin.json entry
 "dtc-PVWeatherStrategy" (references dtcPV.isCycling) makes `continue fed-sysml`
-+ `fed terraform apply` generate the Event Registry trigger, Step Function,
-Collector, Strategy Lambda, Feedback Lambda, and their IAM roles - all in
++ `fed terraform apply` generate the Event Registry trigger, the pipeline Lambda
+(collector -> strategy -> feedback in one function) and its IAM role - all in
 Terraform.
 
 fed-sysml cannot wire in dtcWeather, though: Weather is passive (no
@@ -14,18 +14,23 @@ the one thing fed-sysml structurally can't, targeting the FEDERATION-OWNED
 Strategy Lambda (not a twin):
 
   - INJECT dtcWeather's hot-reader ARN + workspace/entity/component and dtcPV's
-    own production device id as env vars on dtc-PVWeatherStrategy_strategy.
-  - GRANT dtc-PVWeatherStrategy_strategy-role lambda:InvokeFunction scoped to
-    dtcWeather-hot-reader only - mirroring how fed-sysml grants its Collector
-    role invoke-on-hot-reader.
+    own production device id as env vars on dtc-PVWeatherStrategy_pipeline.
+  - GRANT dtc-PVWeatherStrategy_pipeline-role lambda:InvokeFunction scoped to
+    dtcWeather-hot-reader only - fed-sysml already grants invoke on the hot
+    readers of the twins referenced in "strategies", but dtcWeather is not one
+    of them.
 
-The fed-sysml Strategy Lambda + role names are deterministic
-(<strategyName>_strategy / <strategyName>_strategy-role), so no discovery is
+The fed-sysml Lambda + role names are deterministic
+(<strategyName>_pipeline / <strategyName>_pipeline-role), so no discovery is
 needed. This runs automatically at the end of `fed terraform apply` (see
 scripts/orchestrator/pipeline.py) - it is not the main mechanism, only the
 Weather-side remainder that fed-sysml cannot express.
 
-    python scripts/federate_pv_weather.py
+IMPORTANT: this must run after EVERY apply. Terraform declares the Lambda's
+environment with only PARAMETERS / FEEDBACK_TYPE / FEEDBACK_TOPIC, so each apply
+resets the variables injected here.
+
+    python3 scripts/federate_pv_weather.py
 """
 from __future__ import annotations
 
@@ -39,8 +44,12 @@ WEATHER_TWIN_NAME = "dtcWeather"
 PV_PRODUCTION_PROPERTY_NAME = "production"
 
 STRATEGY_NAME = "dtc-PVWeatherStrategy"
-STRATEGY_FUNCTION_NAME = f"{STRATEGY_NAME}_strategy"
-STRATEGY_ROLE_NAME = f"{STRATEGY_NAME}_strategy-role"
+# fed-sysml generates ONE Lambda per federation, "<name>_pipeline", which calls
+# collector -> our strategy code -> feedback in-process. The IAM role follows the
+# same base name ("<name>_pipeline-role"). The older layout had three separate
+# Lambdas chained by a Step Function and used "<name>_strategy".
+STRATEGY_FUNCTION_NAME = f"{STRATEGY_NAME}_pipeline"
+STRATEGY_ROLE_NAME = f"{STRATEGY_NAME}_pipeline-role"
 INVOKE_POLICY_NAME = "pv-weather-federation-invoke"
 
 WEATHER_FEDERATION_INPUT_FILE = (

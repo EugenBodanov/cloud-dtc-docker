@@ -110,19 +110,18 @@ package dtcBattery {
                 :>> value default "10.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
-            // PV production level (kW) at which the battery treats generation as
-            // a surplus and raises the EV charging power. This is the battery's
-            // OWN threshold - it names no other twin, so dtcBattery stays
-            // independent before federation.
+            // NOT USED IN ANY CONDITION ANY MORE. The conditions below are pure
+            // triggers now, and the thresholds that decide the outcome live in
+            // decision_logic.py (GREEN_ENERGY_THRESHOLD = 75.0). Kept only so the
+            // values stay visible on the twin; the authoritative copy is the
+            // Python one. Do not reintroduce them into a condition without
+            // syncing both places.
             #constAttribute surplusThreshold {
                 :>> value default "47.5";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
-            // Share of renewables in the grid (%) above which the battery
-            // prioritises storing that energy for itself and stops charging the
-            // EV. Again the battery's OWN threshold - names no other twin.
             #constAttribute greenEnergyThreshold {
-                :>> value default "70.0";
+                :>> value default "75.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             // The "plugged in" value, used as the right-hand side of the plug
@@ -138,12 +137,25 @@ package dtcBattery {
         :>> hotDatabaseRetentionDays default 30;
         :>> coldDatabaseRetentionDays default 30;
 
-        // Fires on every new isPlugged value arriving from the Charger push
-        // (self-comparison, always true - the project-wide idiom). This is the
-        // ONLY decision trigger for now: the other inputs (generatedPower,
-        // greenEnergyPercentage, maxPower, charge) are read by the Strategy
-        // Lambda itself, so they do not need to be triggers and cannot amplify
-        // the number of executions.
+        // ------------------------------------------------------------------ //
+        // Three decision triggers, one per input that can change the outcome.
+        //
+        // The deployed event-checker filters by the property that actually
+        // arrived in the message:
+        //
+        //     trigger_keys = set(event.keys()) - {"iotDeviceId", "time"}
+        //     if not trigger_keys.intersection(condition_properties): skip
+        //
+        // That is why the self-comparison idiom is safe here: each condition
+        // only ever fires on ITS OWN property. A `charge` message from the
+        // simulator matches none of them and starts nothing.
+        //
+        // The decision itself (green >= 75%, car priority, power split) lives in
+        // decision_logic.py - these conditions are pure triggers, not policy.
+        // ------------------------------------------------------------------ //
+
+        // Fires when a new plug state arrives from the Charger push, and only
+        // when it is "true" - unplugging does not start a decision.
         //
         // NOFEEDBACK: the local action publishes nothing; the federation
         // Feedback Lambda writes actChargeEV to dtcCharger.
@@ -157,28 +169,26 @@ package dtcBattery {
             }
         }
 
-        // Fires ONLY when generatedPower reaches the surplus threshold exactly.
-        // Deliberately not a self-comparison: event-checker evaluates
-        // generatedPower == 47.5, so an ordinary PV push (42.5, 45, 50, ...) is
-        // simply false and starts nothing at all - no Step Function, no failed
-        // executions, no extra chance to loop.
+        // Fires on every new generatedPower value pushed in from the PV twin.
+        // Self-comparison on purpose: any new production figure changes the
+        // power split, so every one of them must re-run the decision.
         #condition surplusReport : BatterySurplusStrategy {
             :>> leftOperand = dtcBattery.externalInputs.generatedPower;
             :>> operator = ComparisonOperator::EQUAL;
-            :>> rightOperand = dtcBattery.surplusThreshold;
+            :>> rightOperand = dtcBattery.externalInputs.generatedPower;
             :>> surplusDecision {
                 :>> feedbackTopicType = FeedbackTopicType::NOFEEDBACK;
                 generatedPower :>> inputParameters = dtcBattery.externalInputs.generatedPower;
             }
         }
 
-        // Fires ONLY while the grid's renewable share is above the threshold.
-        // Conditional like surplusReport - an ordinary greenEnergy push below 70%
-        // evaluates to false and starts nothing.
+        // Fires on every new greenEnergyPercentage value pushed in from the Grid
+        // twin. Whether the grid counts as green (>= 75%) is decided in
+        // decision_logic.py, not here - this is only the trigger.
         #condition greenEnergyReport : BatteryGreenEnergyStrategy {
             :>> leftOperand = dtcBattery.externalInputs.greenEnergyPercentage;
-            :>> operator = ComparisonOperator::GREATER_THAN;
-            :>> rightOperand = dtcBattery.greenEnergyThreshold;
+            :>> operator = ComparisonOperator::EQUAL;
+            :>> rightOperand = dtcBattery.externalInputs.greenEnergyPercentage;
             :>> greenEnergyDecision {
                 :>> feedbackTopicType = FeedbackTopicType::NOFEEDBACK;
                 greenEnergyPercentage :>> inputParameters = dtcBattery.externalInputs.greenEnergyPercentage;
