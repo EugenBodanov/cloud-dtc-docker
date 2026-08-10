@@ -69,17 +69,32 @@ def calculate_power_split(
     battery_max_discharging_power,
     is_plugged,
     electricity_price=None,
+    battery_charge_percent=None,
 ):
     """Return (actChargeEV, actBatteryCharge) in kW.
 
     actChargeEV      - what the Charger applies to the EV
     actBatteryCharge - what the battery charges ITSELF with
+
+    battery_charge_percent is the current state of charge. When given, it gates
+    both ends: an empty battery stops feeding the car, a full one stops
+    accepting. Passing None disables both gates, which is what the pure power
+    split did before state of charge was tracked.
     """
     if not is_plugged:
         return 0.0, 0.0
 
     pv_production = max(0.0, pv_production)
     grid_max_power = max(0.0, grid_max_power)
+
+    # An empty battery cannot feed the car; a full one cannot take more in.
+    discharge_available = battery_max_discharging_power
+    charge_headroom = battery_max_charging_power
+    if battery_charge_percent is not None:
+        if battery_charge_percent <= BATTERY_RESERVE_PERCENT:
+            discharge_available = 0.0
+        if battery_charge_percent >= 100.0:
+            charge_headroom = 0.0
 
     if green_energy_percentage >= GREEN_ENERGY_THRESHOLD:
         # Green: draw from the grid, but only as much of it as the price
@@ -93,21 +108,94 @@ def calculate_power_split(
         available = usable_grid + pv_production
         act_charge_ev = min(charger_max_power, available)
         battery_charge_power = min(
-            battery_max_charging_power, max(0.0, available - act_charge_ev)
+            charge_headroom, max(0.0, available - act_charge_ev)
         )
     else:
         # Brown and expensive: do not touch the grid. The CAR has priority and is
         # fed from both sources at once - the battery discharges into it and all
         # PV goes the same way.
-        act_charge_ev = min(charger_max_power, battery_max_discharging_power + pv_production)
+        act_charge_ev = min(charger_max_power, discharge_available + pv_production)
         # Only the PV the car could not absorb is left for the battery.
-        pv_taken_by_car = max(0.0, act_charge_ev - battery_max_discharging_power)
+        pv_taken_by_car = max(0.0, act_charge_ev - discharge_available)
         pv_left = max(0.0, pv_production - pv_taken_by_car)
-        battery_charge_power = min(battery_max_charging_power, pv_left)
+        battery_charge_power = min(charge_headroom, pv_left)
 
     return _clamp(act_charge_ev, charger_max_power), _clamp(
         battery_charge_power, battery_max_charging_power
     )
+
+
+# --------------------------------------------------------------------------- #
+# State of charge
+# --------------------------------------------------------------------------- #
+# Below this level the battery keeps what is left for itself and stops feeding
+# the car. Above 100% it obviously stops accepting.
+BATTERY_RESERVE_PERCENT = 20.0
+
+# Simulated seconds per real second. The scenarios span 05:00 to 21:00, so at
+# real time the demo would take sixteen hours; at x120 it fits in ~8.5 minutes
+# while the INTERVALS stay proportional - the four-hour gap between 08:00 and
+# 12:00 really does take four times longer on screen than a one-hour gap.
+TIME_ACCELERATION = 120.0
+
+# Never integrate over more than this many real seconds in one step. Without it,
+# a Lambda that has not run for an hour would apply a single enormous jump.
+MAX_STEP_SECONDS = 300.0
+
+
+def net_battery_power(
+    green_energy_percentage,
+    act_charge_ev,
+    battery_charge_power,
+    battery_max_discharging_power,
+    battery_charge_percent=None,
+):
+    """Signed power seen by the battery, in kW. Positive charges, negative drains.
+
+    In the green branch the car runs off the grid, so the battery only ever
+    charges. In the brown branch the battery is what feeds the car, so it drains
+    by whatever share of the car's draw it had to cover.
+
+    battery_charge_percent must be gated the SAME way as in
+    calculate_power_split: a battery at or below the reserve contributed nothing,
+    so it must not be counted as discharging. Without this the two would disagree
+    - the split would correctly refuse to discharge while this reported a drain.
+    """
+    if green_energy_percentage >= GREEN_ENERGY_THRESHOLD:
+        return battery_charge_power
+
+    discharge_available = battery_max_discharging_power
+    if (battery_charge_percent is not None
+            and battery_charge_percent <= BATTERY_RESERVE_PERCENT):
+        discharge_available = 0.0
+
+    discharged = min(discharge_available, act_charge_ev)
+    return battery_charge_power - discharged
+
+
+def next_state_of_charge(
+    current_percent,
+    net_power_kw,
+    total_capacity_kwh,
+    elapsed_seconds,
+):
+    """Integrate the net power over the elapsed time into a new SoC percentage.
+
+    elapsed_seconds is REAL time; it is clamped and then scaled by
+    TIME_ACCELERATION. Returns the new percentage, clamped to [0, 100].
+    """
+    if total_capacity_kwh <= 0.0 or elapsed_seconds is None or elapsed_seconds <= 0.0:
+        return _percent(current_percent)
+
+    simulated_hours = min(elapsed_seconds, MAX_STEP_SECONDS) * TIME_ACCELERATION / 3600.0
+    delta_percent = net_power_kw * simulated_hours / total_capacity_kwh * 100.0
+    return _percent(current_percent + delta_percent)
+
+
+def _percent(value):
+    """Clamp a state of charge to [0, 100] at two decimals."""
+    value = max(0.0, min(100.0, value))
+    return int(value * 100.0) / 100.0
 
 
 def _clamp(value, upper):

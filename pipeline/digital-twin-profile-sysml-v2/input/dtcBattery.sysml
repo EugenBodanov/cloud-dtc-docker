@@ -98,8 +98,12 @@ package dtcBattery {
             // #constAttribute nested in a component; entity-level consts materialize
             // as a generated const_component (same as dtc2bat's trueValue/maxTemp).
             // Default values are placeholders - adjust to the real battery spec.
+            // Usable energy store, in kWh. Sized for a commercial charging site
+            // (22 kW charger, 10 kW PV, 25 kW grid connection), not a household
+            // battery: at 10 kW it must survive the eight-hour evening stretch
+            // between the 13:00 and 21:00 scenarios without hitting the reserve.
             #constAttribute totalCapacity {
-                :>> value default "100.0";
+                :>> value default "200.0";
                 :>> dataType default AttributeDataType::DOUBLE;
             }
             #constAttribute maxChargingPower {

@@ -7,7 +7,7 @@ This is a standalone helper, not part of the orchestrator's command dispatch,
 mirroring scripts/resolve_federation_push_target.py for the dtcGrid/dtcBattery
 pair. Run it manually after both dtcGrid and dtcBattery have been deployed:
 
-    python scripts/resolve_grid_battery_push_target.py
+    python3 scripts/resolve_grid_battery_push_target.py
 """
 from __future__ import annotations
 

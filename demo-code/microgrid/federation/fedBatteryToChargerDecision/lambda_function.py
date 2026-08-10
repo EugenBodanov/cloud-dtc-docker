@@ -4,7 +4,11 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 
-from decision_logic import calculate_power_split
+from decision_logic import (
+    calculate_power_split,
+    net_battery_power,
+    next_state_of_charge,
+)
 
 # Federation-owned Strategy Lambda for dtc-BatteryChargerDecisionStrategy.
 #
@@ -29,7 +33,15 @@ CHARGER_ACT_CHARGE_DEVICE_ID = os.environ.get("CHARGER_ACT_CHARGE_DEVICE_ID")
 # the enablement step - consts are not collectible through the Collector.
 BATTERY_MAX_CHARGING_POWER = os.environ.get("BATTERY_MAX_CHARGING_POWER")
 BATTERY_MAX_DISCHARGING_POWER = os.environ.get("BATTERY_MAX_DISCHARGING_POWER")
+BATTERY_TOTAL_CAPACITY = os.environ.get("BATTERY_TOTAL_CAPACITY")
 CHARGER_MAX_POWER = os.environ.get("CHARGER_MAX_POWER")
+
+# Where the recomputed state of charge is published. Separate from the feedback
+# topic, which carries the Charger result.
+BATTERY_STORAGE_DEVICE_ID = os.environ.get("BATTERY_STORAGE_DEVICE_ID")
+BATTERY_IOT_TOPIC = os.environ.get("BATTERY_IOT_TOPIC")
+
+iot_client = boto3.client("iot-data")
 
 STRATEGY_NAME = "dtc-BatteryChargerDecisionStrategy"
 TRIGGER_EVENT_NAME = "plugDecision"
@@ -52,7 +64,10 @@ REQUIRED_ENV = {
     "CHARGER_ACT_CHARGE_DEVICE_ID": CHARGER_ACT_CHARGE_DEVICE_ID,
     "BATTERY_MAX_CHARGING_POWER": BATTERY_MAX_CHARGING_POWER,
     "BATTERY_MAX_DISCHARGING_POWER": BATTERY_MAX_DISCHARGING_POWER,
+    "BATTERY_TOTAL_CAPACITY": BATTERY_TOTAL_CAPACITY,
     "CHARGER_MAX_POWER": CHARGER_MAX_POWER,
+    "BATTERY_STORAGE_DEVICE_ID": BATTERY_STORAGE_DEVICE_ID,
+    "BATTERY_IOT_TOPIC": BATTERY_IOT_TOPIC,
 }
 
 
@@ -79,10 +94,12 @@ def lambda_handler(event, context):
     # Everything is read explicitly with a time range, which makes the hot-reader
     # return every record containing the property, so a value is found regardless
     # of which message happened to be last.
+    storage_times = {}
     battery_storage = _pull(
         "Battery.storage", BATTERY_HOT_READER_ARN, BATTERY_WORKSPACE_ID,
         BATTERY_ENTITY_ID, BATTERY_STORAGE_COMPONENT,
         {"isPlugged": "STRING", "charge": "DOUBLE"},
+        timestamps=storage_times,
     )
     battery_inputs = _pull(
         "Battery.externalInputs", BATTERY_HOT_READER_ARN, BATTERY_WORKSPACE_ID,
@@ -114,11 +131,9 @@ def lambda_handler(event, context):
         battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
         is_plugged=is_plugged,
         electricity_price=electricity_price,
+        battery_charge_percent=charge,
     )
 
-    # charge is logged but deliberately NOT part of the decision - it is produced
-    # by the simulator and a stray low value would silently zero a scenario. The
-    # pulled price DOES take part now, but only in the green branch.
     print("DIAG inputs: " + json.dumps({
         "isPlugged": is_plugged, "charge": charge,
         "generatedPower": generated_power, "greenEnergyPercentage": green_energy,
@@ -126,9 +141,34 @@ def lambda_handler(event, context):
         "chargerMaxPower": _as_float(CHARGER_MAX_POWER),
         "batteryMaxCharging": _as_float(BATTERY_MAX_CHARGING_POWER),
         "batteryMaxDischarging": _as_float(BATTERY_MAX_DISCHARGING_POWER),
+        "totalCapacity": _as_float(BATTERY_TOTAL_CAPACITY),
     }))
     print("DIAG actChargeEV: " + json.dumps(act_charge_ev)
           + " | actBatteryCharge: " + json.dumps(battery_charge_power))
+
+    # --- state of charge -----------------------------------------------------
+    # Integrate the signed battery power over the time since the last charge
+    # reading, then publish it back to dtcBattery. This is a SEPARATE publish,
+    # not the feedback: a federation has one feedback topic and that one belongs
+    # to the Charger. Safe to write into dtcBattery because the message carries
+    # only "charge", which matches none of dtcBattery's trigger conditions.
+    net_power = net_battery_power(
+        green_energy_percentage=green_energy,
+        act_charge_ev=act_charge_ev,
+        battery_charge_power=battery_charge_power,
+        battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
+        battery_charge_percent=charge,
+    )
+    elapsed = _seconds_since(storage_times.get("charge"))
+    new_charge = next_state_of_charge(
+        current_percent=charge,
+        net_power_kw=net_power,
+        total_capacity_kwh=_as_float(BATTERY_TOTAL_CAPACITY),
+        elapsed_seconds=elapsed,
+    )
+    print(f"DIAG soc: {charge} % + net {net_power:+.2f} kW over {elapsed}s"
+          f" -> {new_charge} %")
+    _publish_state_of_charge(new_charge)
 
     # Feedback publishes this to dtcCharger/iot-data; ingestion routes by
     # iotDeviceId to write dtcCharger.chargerState.actChargeEV. The
@@ -148,8 +188,12 @@ def lambda_handler(event, context):
     }
 
 
-def _pull(label, hot_reader_arn, workspace_id, entity_id, component_name, properties):
+def _pull(label, hot_reader_arn, workspace_id, entity_id, component_name, properties,
+          timestamps=None):
     """Read the latest value of each property from one component.
+
+    If a dict is passed as `timestamps`, it is filled with the ISO timestamp of
+    each value that was found - needed to integrate the state of charge.
 
     Uses the hot-reader's TIME-RANGE branch on purpose. Without startTime/endTime
     the hot-reader returns only the single most recent DynamoDB record, and a
@@ -161,6 +205,9 @@ def _pull(label, hot_reader_arn, workspace_id, entity_id, component_name, proper
     propertyValues as a LIST of {entityPropertyReference, values[]}, while the
     plain branch returns a DICT keyed by property name. This parses the list form.
     """
+    if timestamps is None:
+        timestamps = {}
+
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=LOOKBACK_HOURS)
 
@@ -202,12 +249,57 @@ def _pull(label, hot_reader_arn, workspace_id, entity_id, component_name, proper
         if not name or not history:
             continue
         # Last entry is the newest - the DynamoDB query is ascending by time.
-        raw_value = history[-1].get("value", {})
+        newest = history[-1]
+        raw_value = newest.get("value", {})
         if raw_value:
             values[name] = list(raw_value.values())[0]
+            # Keep the timestamp too: the state of charge integrates over the
+            # time since this value was written, so the reading is useless
+            # without knowing when it was taken.
+            timestamps[name] = newest.get("time")
 
     print(f"DIAG {label} resolved: " + json.dumps(values, default=str))
     return values
+
+
+def _seconds_since(iso_timestamp):
+    """Real seconds between an ISO-8601 UTC timestamp and now.
+
+    Returns None when the timestamp is missing or unparseable, which
+    next_state_of_charge treats as "no elapsed time" and leaves the SoC alone -
+    better than guessing an interval and moving the battery by a wrong amount.
+    """
+    if not iso_timestamp:
+        return None
+    try:
+        text = str(iso_timestamp).replace("Z", "+00:00")
+        then = datetime.fromisoformat(text)
+        if then.tzinfo is None:
+            then = then.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError) as error:
+        print(f"DIAG could not parse timestamp {iso_timestamp!r}: {error}")
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - then).total_seconds())
+
+
+def _publish_state_of_charge(new_charge):
+    """Publish the recomputed charge straight to dtcBattery's ingestion topic.
+
+    Not through Feedback - that one is bound to dtcCharger. A failure here must
+    not lose the Charger result, which is why it is caught and logged.
+    """
+    payload = {
+        "iotDeviceId": BATTERY_STORAGE_DEVICE_ID,
+        "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
+        "charge": new_charge,
+    }
+    try:
+        iot_client.publish(
+            topic=BATTERY_IOT_TOPIC, qos=1, payload=json.dumps(payload)
+        )
+        print(f"DIAG published charge to {BATTERY_IOT_TOPIC}: {json.dumps(payload)}")
+    except Exception as error:  # noqa: BLE001
+        print(f"DIAG publishing charge failed: {error}")
 
 
 def _as_float(value):

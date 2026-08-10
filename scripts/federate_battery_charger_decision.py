@@ -51,6 +51,7 @@ CHARGER_ACT_CHARGE_PROPERTY = "actChargeEV"
 BATTERY_CONSTS = {
     "BATTERY_MAX_CHARGING_POWER": "maxChargingPower",
     "BATTERY_MAX_DISCHARGING_POWER": "maxDischargingPower",
+    "BATTERY_TOTAL_CAPACITY": "totalCapacity",
 }
 CHARGER_CONSTS = {
     "CHARGER_MAX_POWER": "maxPower",
@@ -222,6 +223,12 @@ def main() -> None:
         "external_inputs": BATTERY_EXTERNAL_INPUTS_PROPERTY,
     })
     charger_device_id = discover_charger_act_charge_device_id()
+    # The state of charge is published straight to dtcBattery's ingestion topic,
+    # so the Lambda needs that device id and topic as well.
+    battery_storage_device_id = _device_id_for_property(
+        _load(BATTERY_TWIN_NAME, "input", "config_iot_devices.json"),
+        BATTERY_STORAGE_PROPERTY, BATTERY_TWIN_NAME,
+    )
     battery_consts = discover_consts(BATTERY_TWIN_NAME, BATTERY_CONSTS)
     charger_consts = discover_consts(CHARGER_TWIN_NAME, CHARGER_CONSTS)
 
@@ -250,6 +257,8 @@ def main() -> None:
         # One target: both actChargeEV and actBatteryCharge go to the same
         # Charger device, in the same feedback message.
         "CHARGER_ACT_CHARGE_DEVICE_ID": charger_device_id,
+        "BATTERY_STORAGE_DEVICE_ID": battery_storage_device_id,
+        "BATTERY_IOT_TOPIC": f"{BATTERY_TWIN_NAME}/iot-data",
         **battery_consts,
         **charger_consts,
     }
