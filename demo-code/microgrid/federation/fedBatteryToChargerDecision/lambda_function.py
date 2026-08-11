@@ -6,8 +6,10 @@ import boto3
 
 from decision_logic import (
     calculate_power_split,
+    grid_power_drawn,
     net_battery_power,
     next_state_of_charge,
+    signed_power,
 )
 
 # Federation-owned Strategy Lambda for dtc-BatteryChargerDecisionStrategy.
@@ -143,22 +145,39 @@ def lambda_handler(event, context):
         "batteryMaxDischarging": _as_float(BATTERY_MAX_DISCHARGING_POWER),
         "totalCapacity": _as_float(BATTERY_TOTAL_CAPACITY),
     }))
-    print("DIAG actChargeEV: " + json.dumps(act_charge_ev)
-          + " | actBatteryCharge: " + json.dumps(battery_charge_power))
-
-    # --- state of charge -----------------------------------------------------
-    # Integrate the signed battery power over the time since the last charge
-    # reading, then publish it back to dtcBattery. This is a SEPARATE publish,
-    # not the feedback: a federation has one feedback topic and that one belongs
-    # to the Charger. Safe to write into dtcBattery because the message carries
-    # only "charge", which matches none of dtcBattery's trigger conditions.
-    net_power = net_battery_power(
+    # What the Charger reports as actBatteryCharge is the SIGNED battery power:
+    # positive while the battery is being charged, negative while it is the one
+    # feeding the car. battery_charge_power on its own only ever covers the
+    # charging half, so on a brown grid it would sit at 0 and hide the drain.
+    net_power = signed_power(
+        net_battery_power(
+            green_energy_percentage=green_energy,
+            act_charge_ev=act_charge_ev,
+            battery_charge_power=battery_charge_power,
+            battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
+            battery_charge_percent=charge,
+        ),
+        _as_float(BATTERY_MAX_CHARGING_POWER),
+        _as_float(BATTERY_MAX_DISCHARGING_POWER),
+    )
+    grid_power = grid_power_drawn(
         green_energy_percentage=green_energy,
+        pv_production=generated_power,
         act_charge_ev=act_charge_ev,
         battery_charge_power=battery_charge_power,
-        battery_max_discharging_power=_as_float(BATTERY_MAX_DISCHARGING_POWER),
-        battery_charge_percent=charge,
     )
+
+    print("DIAG actChargeEV: " + json.dumps(act_charge_ev)
+          + " | actBatteryCharge: " + json.dumps(net_power)
+          + " | gridPower: " + json.dumps(grid_power))
+
+    # --- state of charge -----------------------------------------------------
+    # Integrate the same signed power over the time since the last charge
+    # reading, then publish it back to dtcBattery together with gridPower. This
+    # is a SEPARATE publish, not the feedback: a federation has one feedback
+    # topic and that one belongs to the Charger. Safe to write into dtcBattery
+    # because the message carries only charge and gridPower, neither of which
+    # matches any of dtcBattery's trigger conditions.
     elapsed = _seconds_since(storage_times.get("charge"))
     new_charge = next_state_of_charge(
         current_percent=charge,
@@ -168,7 +187,7 @@ def lambda_handler(event, context):
     )
     print(f"DIAG soc: {charge} % + net {net_power:+.2f} kW over {elapsed}s"
           f" -> {new_charge} %")
-    _publish_state_of_charge(new_charge)
+    _publish_battery_state(new_charge, grid_power)
 
     # Feedback publishes this to dtcCharger/iot-data; ingestion routes by
     # iotDeviceId to write dtcCharger.chargerState.actChargeEV. The
@@ -183,7 +202,7 @@ def lambda_handler(event, context):
             "iotDeviceId": CHARGER_ACT_CHARGE_DEVICE_ID,
             "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
             "actChargeEV": act_charge_ev,
-            "actBatteryCharge": battery_charge_power,
+            "actBatteryCharge": net_power,
         }),
     }
 
@@ -282,22 +301,24 @@ def _seconds_since(iso_timestamp):
     return max(0.0, (datetime.now(timezone.utc) - then).total_seconds())
 
 
-def _publish_state_of_charge(new_charge):
-    """Publish the recomputed charge straight to dtcBattery's ingestion topic.
+def _publish_battery_state(new_charge, grid_power):
+    """Publish charge + gridPower straight to dtcBattery's ingestion topic.
 
-    Not through Feedback - that one is bound to dtcCharger. A failure here must
-    not lose the Charger result, which is why it is caught and logged.
+    Not through Feedback - that one is bound to dtcCharger. Both values live on
+    the same storage device, so one message covers them. A failure here must not
+    lose the Charger result, which is why it is caught and logged.
     """
     payload = {
         "iotDeviceId": BATTERY_STORAGE_DEVICE_ID,
         "time": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
         "charge": new_charge,
+        "gridPower": grid_power,
     }
     try:
         iot_client.publish(
             topic=BATTERY_IOT_TOPIC, qos=1, payload=json.dumps(payload)
         )
-        print(f"DIAG published charge to {BATTERY_IOT_TOPIC}: {json.dumps(payload)}")
+        print(f"DIAG published to {BATTERY_IOT_TOPIC}: {json.dumps(payload)}")
     except Exception as error:  # noqa: BLE001
         print(f"DIAG publishing charge failed: {error}")
 

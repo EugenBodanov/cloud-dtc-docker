@@ -69,6 +69,17 @@ package dtcBattery {
                 #measureAttribute chargingStatus {
                     :>> dataType default AttributeDataType::STRING;
                 }
+                // How much of the delivered power is actually bought from the
+                // grid, in kW. Zero while the grid is brown (nothing is bought -
+                // the car runs off the battery and PV). While it is green this
+                // is what remains after PV covers its share, so more sun means a
+                // smaller number.
+                //
+                // Written by the decision federation into the SAME message as
+                // charge, so it costs no extra device and no extra publish.
+                #measureAttribute gridPower {
+                    :>> dataType default AttributeDataType::DOUBLE;
+                }
             }
             // External inputs received from other twins via federation. Same
             // pattern as dtc2bat's pvInput virtual-sensor component - these are

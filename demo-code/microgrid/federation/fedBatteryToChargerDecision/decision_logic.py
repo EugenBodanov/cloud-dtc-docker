@@ -192,6 +192,46 @@ def next_state_of_charge(
     return _percent(current_percent + delta_percent)
 
 
+def grid_power_drawn(
+    green_energy_percentage,
+    pv_production,
+    act_charge_ev,
+    battery_charge_power,
+):
+    """How much of the delivered power is actually bought from the grid, in kW.
+
+    Brown grid: nothing is bought at all - the car runs off the battery and PV.
+
+    Green grid: everything delivered (car + battery) minus whatever PV covered.
+    PV is used first because it is free, so the more sun there is the less has to
+    come from the grid - at PV 10 kW the draw falls from 25 to 22 even though the
+    car still gets its full 22 kW.
+    """
+    if green_energy_percentage < GREEN_ENERGY_THRESHOLD:
+        return 0.0
+
+    delivered = act_charge_ev + max(0.0, battery_charge_power)
+    covered_by_pv = min(max(0.0, pv_production), delivered)
+    return _round2(max(0.0, delivered - covered_by_pv))
+
+
+def signed_power(value, max_charge, max_discharge):
+    """Clamp a signed battery power to [-max_discharge, +max_charge].
+
+    Separate from _clamp, which floors at zero: that one is for the car's
+    charging power, which can never be negative, while this one must keep the
+    sign that tells charging from discharging.
+    """
+    value = max(-abs(max_discharge), min(value, abs(max_charge)))
+    return _round2(value)
+
+
+def _round2(value):
+    """Truncate toward zero at two decimals, keeping the sign."""
+    sign = -1.0 if value < 0 else 1.0
+    return sign * (int(abs(value) * 100.0) / 100.0)
+
+
 def _percent(value):
     """Clamp a state of charge to [0, 100] at two decimals."""
     value = max(0.0, min(100.0, value))
