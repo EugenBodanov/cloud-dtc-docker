@@ -1,9 +1,10 @@
 import json
 from datetime import datetime, timezone
 
-# Injected automatically by scripts/resolve_grid_battery_maxpower_target.py from
-# Battery's (dtcBattery) deployed config_iot_devices.json, before "continue fed-sysml".
-BATTERY_MAX_POWER_DEVICE_ID = "RUghw5XVpoyHEpJUAoKXpT"
+# Regenerated into lambda_function.py by scripts/resolve_grid_battery_maxpower_target.py
+# from dtcBattery's deployed config_iot_devices.json. Do not edit lambda_function.py
+# directly - it is gitignored and rebuilt from this template on every run.
+BATTERY_MAX_POWER_DEVICE_ID = "__BATTERY_MAX_POWER_DEVICE_ID__"
 
 
 def lambda_handler(event, context):

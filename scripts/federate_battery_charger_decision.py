@@ -21,12 +21,13 @@ the FEDERATION-OWNED Strategy Lambda (never a twin):
 
 The fed-sysml Lambda + role names are deterministic
 (<strategyName>_pipeline / <strategyName>_pipeline-role), so no discovery is
-needed. Runs automatically at the end of `fed terraform apply` (see
-scripts/orchestrator/pipeline.py).
+needed.
 
-IMPORTANT: this must run after EVERY apply. Terraform declares the Lambda's
-environment with only PARAMETERS / FEEDBACK_TYPE / FEEDBACK_TOPIC, so each apply
-resets the variables injected here.
+Standalone helper, not part of the orchestrator's command dispatch. Run it
+manually after EVERY `fed terraform apply` that touches this federation -
+Terraform declares the Lambda's environment with only PARAMETERS /
+FEEDBACK_TYPE / FEEDBACK_TOPIC, so each apply resets the variables injected
+here.
 
     python3 scripts/federate_battery_charger_decision.py
 """

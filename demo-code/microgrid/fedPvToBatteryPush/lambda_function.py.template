@@ -1,9 +1,10 @@
 import json
 from datetime import datetime, timezone
 
-# Injected automatically by scripts/resolve_federation_push_target.py from
-# Battery's (dtcsbat) deployed config_iot_devices.json, before "continue fed-sysml".
-BATTERY_VIRTUAL_SENSOR_ID = "dRRRNfLuwgCbPwL8cNKM8Z"
+# Regenerated into lambda_function.py by scripts/resolve_federation_push_target.py
+# from dtc2bat's deployed config_iot_devices.json. Do not edit lambda_function.py
+# directly - it is gitignored and rebuilt from this template on every run.
+BATTERY_VIRTUAL_SENSOR_ID = "__BATTERY_VIRTUAL_SENSOR_ID__"
 
 
 def lambda_handler(event, context):

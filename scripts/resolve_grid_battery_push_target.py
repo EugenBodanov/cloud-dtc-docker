@@ -1,71 +1,37 @@
 #!/usr/bin/env python3
-"""Resolve the Battery greenEnergyPercentage device ID from its deployed output and
-inject it into the federation-owned Grid -> Battery push Lambda, before
-running `continue fed-sysml`.
+"""Resolve the Battery greenEnergyPercentage device ID from its deployed
+output and (re)generate the federation-owned Grid -> Battery push Lambda
+from its template, before running `continue fed-sysml`.
 
-This is a standalone helper, not part of the orchestrator's command dispatch,
-mirroring scripts/resolve_federation_push_target.py for the dtcGrid/dtcBattery
-pair. Run it manually after both dtcGrid and dtcBattery have been deployed:
+This is a standalone helper, not part of the orchestrator's command
+dispatch, mirroring scripts/resolve_federation_push_target.py for the
+dtcGrid/dtcBattery pair. Run it manually after both dtcGrid and dtcBattery
+have been deployed:
 
     python3 scripts/resolve_grid_battery_push_target.py
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from resolve_common import REPO_ROOT, resolve_and_inject
 
 BATTERY_TWIN_NAME = "dtcBattery"
 TARGET_PROPERTY_NAME = "greenEnergyPercentage"
 PLACEHOLDER = "__BATTERY_GREEN_ENERGY_DEVICE_ID__"
 
-BATTERY_DEVICES_FILE = (
-    REPO_ROOT / "pipeline" / "digital-twin-manager" / "deployments"
-    / BATTERY_TWIN_NAME / "input" / "config_iot_devices.json"
+LAMBDA_DIR = (
+    REPO_ROOT / "demo-code" / "microgrid" / "federation" / "fedGridToBatteryPush"
 )
-PUSH_LAMBDA_FILE = (
-    REPO_ROOT / "demo-code" / "microgrid" / "federation"
-    / "fedGridToBatteryPush" / "lambda_function.py"
-)
-
-
-def resolve_battery_green_energy_device_id() -> str:
-    if not BATTERY_DEVICES_FILE.is_file():
-        raise SystemExit(
-            f"Missing deployed device list: {BATTERY_DEVICES_FILE}. "
-            f"Deploy '{BATTERY_TWIN_NAME}' before running federation."
-        )
-
-    devices = json.loads(BATTERY_DEVICES_FILE.read_text(encoding="utf-8"))
-    for device in devices:
-        for prop in device.get("properties", []):
-            if prop.get("name") == TARGET_PROPERTY_NAME:
-                return device["id"]
-
-    raise SystemExit(
-        f"No device with property '{TARGET_PROPERTY_NAME}' found in {BATTERY_DEVICES_FILE}."
-    )
-
-
-def inject_into_push_lambda(device_id: str) -> None:
-    if not PUSH_LAMBDA_FILE.is_file():
-        raise SystemExit(f"Missing federation push Lambda: {PUSH_LAMBDA_FILE}")
-
-    code = PUSH_LAMBDA_FILE.read_text(encoding="utf-8")
-    updated = code.replace(f'"{PLACEHOLDER}"', f'"{device_id}"')
-
-    if updated == code and PLACEHOLDER not in code:
-        print(f"Already resolved: {PUSH_LAMBDA_FILE} references '{device_id}'.")
-        return
-
-    PUSH_LAMBDA_FILE.write_text(updated, encoding="utf-8")
-    print(f"Injected Battery greenEnergyPercentage device ID '{device_id}' into {PUSH_LAMBDA_FILE}")
 
 
 def main() -> None:
-    device_id = resolve_battery_green_energy_device_id()
-    inject_into_push_lambda(device_id)
+    resolve_and_inject(
+        source_twin=BATTERY_TWIN_NAME,
+        property_name=TARGET_PROPERTY_NAME,
+        placeholder=PLACEHOLDER,
+        template_file=LAMBDA_DIR / "lambda_function.py.template",
+        target_file=LAMBDA_DIR / "lambda_function.py",
+        label="Battery greenEnergyPercentage device ID",
+    )
 
 
 if __name__ == "__main__":
