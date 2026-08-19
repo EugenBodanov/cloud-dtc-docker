@@ -22,6 +22,15 @@ Thumbs.db
 # Generated Lambda deployment bundles
 demo-code/**/zipped.zip
 
+# Lambda sources regenerated from a .template by scripts/resolve_*.py - the
+# committed template always keeps the placeholder; these are deployment-
+# specific and rebuilt on every run.
+demo-code/microgrid/fedPvToBatteryPush/lambda_function.py
+demo-code/microgrid/federation/fedGridToBatteryPush/lambda_function.py
+demo-code/microgrid/federation/fedGridToBatteryMaxPowerPush/lambda_function.py
+demo-code/microgrid/federation/fedPvToBatteryGeneratedPowerPush/lambda_function.py
+demo-code/microgrid/federation/fedChargerToBatteryPlugPush/lambda_function.py
+
 # Enterprise Architect exports
 pipeline/enterprise-architect/output/
 

@@ -1,8 +1,11 @@
-package Battery2Twin {
+package dtc2bat {
 
     private import MetaModelDigitalTwin::*;
 
     #Component def PAC_Sensor { }
+
+    #Component def PV_Virtual_Sensor { }
+
 
     #Condition def BatteryStatusStrategy {
         #strategyAction status :>> strategieActions {
@@ -13,8 +16,8 @@ package Battery2Twin {
         }
     }
 
-    #Twin def Battery2 {
-        #entity Battery2 {
+    #Twin def dtc2bat {
+        #entity dtc2bat {
             #component p16 : PAC_Sensor {
                 #measureAttribute isPlugged {
                     :>> dataType default AttributeDataType::STRING;
@@ -23,6 +26,11 @@ package Battery2Twin {
                     :>> dataType default AttributeDataType::INTEGER;
                 }
                 #measureAttribute consumption {
+                    :>> dataType default AttributeDataType::DOUBLE;
+                }
+            }
+            #component pvInput : PV_Virtual_Sensor {
+                #measureAttribute pvGeneratedPower {
                     :>> dataType default AttributeDataType::DOUBLE;
                 }
             }
@@ -40,13 +48,13 @@ package Battery2Twin {
         :>> coldDatabaseRetentionDays default 30;
 
         #condition operational : BatteryStatusStrategy {
-            :>> leftOperand = Battery2.p16.isPlugged;
+            :>> leftOperand = dtc2bat.p16.isPlugged;
             :>> operator = ComparisonOperator::EQUAL;
-            :>> rightOperand = Battery2.trueValue;
+            :>> rightOperand = dtc2bat.trueValue;
             :>> status {
                 :>> feedbackTopicType = FeedbackTopicType::EXTERN;
-                chargeValue :>> inputParameters = Battery2.p16.charges;
-                :>> externalTopic = "Battery2/iot-data";
+                chargeValue :>> inputParameters = dtc2bat.p16.charges;
+                :>> externalTopic = "dtc2bat/iot-data";
             }
         }
     }

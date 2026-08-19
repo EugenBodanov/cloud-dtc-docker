@@ -473,6 +473,14 @@ def run_fed_sysml_terraform_apply_saved_plan_stage(config: PipelineConfig) -> No
         show_container_logs=True,
     )
 
+    # PV<->Weather and Battery->Charger decision each need one further,
+    # manual enablement step after this apply (dtcWeather/dtcGrid hot-reader
+    # access that fed-sysml cannot express) - run
+    # scripts/federate_pv_weather.py and
+    # scripts/federate_battery_charger_decision.py by hand. Not run
+    # automatically here: a failure in either must not be swallowed and
+    # reported as if this apply stage fully succeeded.
+
 
 def _require_fed_sysml_terraform_ready(config: PipelineConfig) -> Path:
     compose_file = resolve_repo_path(config.compose_file)
