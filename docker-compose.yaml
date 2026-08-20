@@ -7,7 +7,7 @@ services:
     container_name: enterprise-architect
     shm_size: "1gb"
     ports:
-      - "127.0.0.1:6080:6080"
+      - "0.0.0.0:6080:6080"
     volumes:
       - enterprise-architect-wine:/home/ea/.wine
       - ./pipeline/enterprise-architect/projects:/home/ea/.wine/drive_c/users/ea/Documents/enterprise-architect/projects
@@ -20,7 +20,7 @@ services:
     profiles:
       - pipeline
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
-    image: csba184/sysml.jupyter:latest
+    image: evbodanov/sysml.jupyter:latest
     container_name: sysml-kernel-container
     tty: true
     stdin_open: true
@@ -135,7 +135,7 @@ services:
         target: /app/config_iot_devices.json
         read_only: true
     ports:
-      - "127.0.0.1:${SIMULATOR_HOST_PORT:-5000}:5000"
+      - "0.0.0.0:${SIMULATOR_HOST_PORT:-5000}:5000"
 
   local-grafana:
     platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
@@ -152,7 +152,7 @@ services:
       AWS_REGION: "${AWS_REGION:-eu-central-1}"
       AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-eu-central-1}"
     ports:
-      - "127.0.0.1:${LOCAL_GRAFANA_HOST_PORT:-3000}:3000"
+      - "0.0.0.0:${LOCAL_GRAFANA_HOST_PORT:-3000}:3000"
     volumes:
       - grafana:/var/lib/grafana
       - ./pipeline/grafana/provisioning:/etc/grafana/provisioning:ro

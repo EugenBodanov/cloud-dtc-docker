@@ -100,6 +100,10 @@ PV2.production
 Battery2.status
 ```
 
+The MEPSO five-twin demo has a separate tracked federation template and
+deployment guide. See [docs/meps-demo.md](docs/meps-demo.md); do not replace the
+legacy `fedtwin.example.json` when running the existing MicroGrid example.
+
 The `DTP_PATH_MAP` value in `.env.example` maps a legacy absolute path embedded
 in the bundled Enterprise Architect model to
 `/pipeline/code/microgrid/stopCharging`. It is a model-path translation, not a

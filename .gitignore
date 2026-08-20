@@ -30,6 +30,9 @@ demo-code/microgrid/federation/fedGridToBatteryPush/lambda_function.py
 demo-code/microgrid/federation/fedGridToBatteryMaxPowerPush/lambda_function.py
 demo-code/microgrid/federation/fedPvToBatteryGeneratedPowerPush/lambda_function.py
 demo-code/microgrid/federation/fedChargerToBatteryPlugPush/lambda_function.py
+demo-code/meps-demo/aggregator-decision/lambda_function.py
+demo-code/meps-demo/dispatch-to-community/lambda_function.py
+demo-code/meps-demo/push-to-aggregator/lambda_function.py
 
 # Enterprise Architect exports
 pipeline/enterprise-architect/output/
