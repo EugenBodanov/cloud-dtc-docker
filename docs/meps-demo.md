@@ -21,11 +21,11 @@ without activating the intended scenario.
 
 ### TSO service request
 
-| Attribute | Accepted/recommended values | Used by decision | Behaviour |
-| --------- | --------------------------- | ---------------- | --------- |
-| `requestedPower` | Number, normally `>= 0` | Yes | Requested service magnitude. Negative, missing, and non-numeric values become `0`. |
-| `serviceDirection` | `NONE`, `UPWARD`, `DOWNWARD` | Yes | Case-insensitive. `UPWARD` reduces demand/exports power; `DOWNWARD` increases demand/imports power. Other values do not activate a TSO service scenario. |
-| `serviceType` | For example `NONE` or `BALANCING` | No | Stored and forwarded from TSO, but currently does not affect allocation or mode. |
+| Attribute          | Accepted/recommended values       | Used by decision | Behaviour                                                                                                                                                |
+| ------------------ | --------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestedPower`   | Number, normally `>= 0`           | Yes              | Requested service magnitude. Negative, missing, and non-numeric values become `0`.                                                                       |
+| `serviceDirection` | `NONE`, `UPWARD`, `DOWNWARD`      | Yes              | Case-insensitive. `UPWARD` reduces demand/exports power; `DOWNWARD` increases demand/imports power. Other values do not activate a TSO service scenario. |
+| `serviceType`      | For example `NONE` or `BALANCING` | No               | Stored and forwarded from TSO, but currently does not affect allocation or mode.                                                                         |
 
 Publish the complete request and update `requestedPower` when activating a TSO
 scenario. The TSO condition is triggered by `requestedPower`; changing only
@@ -34,24 +34,20 @@ federation.
 
 ### DSO substation state
 
-| Attribute | Accepted/recommended values | Used by decision | Behaviour |
-| --------- | --------------------------- | ---------------- | --------- |
-| `voltageStatus` | `NORMAL`, `HIGH_VOLTAGE`; `LOW_VOLTAGE` may be stored | TS1 only | Only TS1 `HIGH_VOLTAGE` currently activates local voltage support. Other values do not activate a voltage scenario. |
-| `exchangePower` | Signed MW | No as input | Forwarded to Aggregator but not used in allocation. The calculated result is written back here after each decision. |
-| `exchangeLimit` | Positive MW | Yes | Used independently for TS1 and TS2. Missing, zero, negative, or non-numeric values use the default `10 MW`. |
-
-The exact voltage token is `HIGH_VOLTAGE`. `HIGH_VOLUME` is a typo and is
-treated as an unsupported value. Publish the complete TS state and update
-`voltageStatus` to trigger the DSO federation.
+| Attribute       | Accepted/recommended values                           | Used by decision | Behaviour                                                                                                           |
+| --------------- | ----------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `voltageStatus` | `NORMAL`, `HIGH_VOLTAGE`; `LOW_VOLTAGE` may be stored | TS1 only         | Only TS1 `HIGH_VOLTAGE` currently activates local voltage support. Other values do not activate a voltage scenario. |
+| `exchangePower` | Signed MW                                             | Output only      | Forwarded to Aggregator but not used in allocation. The calculated result is written back here after each decision. |
+| `exchangeLimit` | Positive MW                                           | Yes              | Used independently for TS1 and TS2. Missing, zero, negative, or non-numeric values use the default `10 MW`.         |
 
 ### EC telemetry
 
-| Attribute | Unit / values | Used by decision | Behaviour |
-| --------- | ------------- | ---------------- | --------- |
-| `stateOfCharge` | Battery SoC, normally percent | No | Forwarded and stored, but no battery-energy emulator currently updates or consumes it. |
-| `batteryPower` | Signed MW | No as input | Positive means charging; negative means discharging. The calculated decision is written directly back here. |
-| `pvPower` | MW, normally `>= 0` | Yes, downward only | EC1/EC2 PV is added to the corresponding battery charging allocation for `DOWNWARD`. Negative PV is treated as `0`. |
-| `dsrPower` | Signed MW | No as input | Positive means increased demand; negative means demand reduction. The calculated decision is written directly back here. |
+| Attribute       | Unit / values                 | Used by decision   | Behaviour                                                                                                                |
+| --------------- | ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `stateOfCharge` | Battery SoC, normally percent | No                 | Forwarded and stored, but no battery-energy emulator currently updates or consumes it.                                   |
+| `batteryPower`  | Signed MW                     | Output only        | Positive means charging; negative means discharging. The calculated decision is written directly back here.              |
+| `pvPower`       | MW, normally `>= 0`           | Yes, downward only | EC1/EC2 PV is added to the corresponding battery charging allocation for `DOWNWARD`. Negative PV is treated as `0`.      |
+| `dsrPower`      | Signed MW                     | Output only        | Positive means increased demand; negative means demand reduction. The calculated decision is written directly back here. |
 
 Battery and DSR telemetry updates are forwarded to Aggregator for visibility,
 but they are deliberately excluded from the portfolio-decision strategy
@@ -60,54 +56,54 @@ decision.
 
 ### Current constants and policy limits
 
-| Value | Current setting | Source / effect |
-| ----- | --------------- | --------------- |
-| TS1 exchange limit | `10 MW` default | Runtime `ts1ExchangeLimit` overrides it when positive. |
-| TS2 exchange limit | `10 MW` default | Runtime `ts2ExchangeLimit` overrides it when positive. |
-| EC1 battery charge/discharge capability | `10 MW` | Present as SysML constants, but the current policy uses scenario-specific allocations capped in code. |
-| EC2 battery charge/discharge capability | `10 MW` | Present as SysML constants, but the current policy uses scenario-specific allocations capped in code. |
-| EC1 DSR allocation | Up to `3 MW` in upward service | Hard-coded by the current demonstration policy. |
-| EC2 DSR allocation | Up to `1 MW` in upward service | Hard-coded by the policy; the SysML `maxDSRFlexibility=3 MW` constant is not consumed. |
-| TS1 high-voltage response | Battery `+4 MW`, DSR `+2 MW` | Limited by the effective TS1 exchange limit. |
+| Value                                   | Current setting                | Source / effect                                                                                       |
+| --------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| TS1 exchange limit                      | `10 MW` default                | Runtime `ts1ExchangeLimit` overrides it when positive.                                                |
+| TS2 exchange limit                      | `10 MW` default                | Runtime `ts2ExchangeLimit` overrides it when positive.                                                |
+| EC1 battery charge/discharge capability | `10 MW`                        | Present as SysML constants, but the current policy uses scenario-specific allocations capped in code. |
+| EC2 battery charge/discharge capability | `10 MW`                        | Present as SysML constants, but the current policy uses scenario-specific allocations capped in code. |
+| EC1 DSR allocation                      | Up to `3 MW` in upward service | Hard-coded by the current demonstration policy.                                                       |
+| EC2 DSR allocation                      | Up to `1 MW` in upward service | Hard-coded by the current demonstration policy.                                                       |
+| TS1 high-voltage response               | Battery `+4 MW`, DSR `+2 MW`   | Limited by the effective TS1 exchange limit.                                                          |
 
 The `substationId`, battery capability, and DSR capability constants are model
 metadata, but the Lambda does not currently load them dynamically.
 
 ## Attribute usage matrix
 
-| Twin/component | Attribute | Current status |
-| -------------- | --------- | -------------- |
-| `dtcTSO.serviceRequest` | `requestedPower`, `serviceDirection` | Active decision inputs. |
-| `dtcTSO.serviceRequest` | `serviceType` | Stored/forwarded; unused by decision. |
-| `dtcDSO.ts1` | `voltageStatus`, `exchangeLimit` | Active decision inputs. |
-| `dtcDSO.ts2` | `exchangeLimit` | Active decision input. |
-| `dtcDSO.ts2` | `voltageStatus` | Stored/forwarded; no policy branch currently uses it. |
-| `dtcDSO.ts1/ts2` | `exchangePower` | Decision output destination; incoming value is unused for allocation. |
-| `dtcEC1/2.battery` | `stateOfCharge` | Stored/forwarded; unused by decision and not emulated. |
-| `dtcEC1/2.battery` | `batteryPower` | Direct decision output destination; previous value is unused for allocation. |
-| `dtcEC1/2.pv` | `pvPower` | Active only in `DOWNWARD` service. |
-| `dtcEC1/2.dsr` | `dsrPower` | Direct decision output destination; previous value is unused for allocation. |
-| `dtcAggreg.decision` | EC battery/DSR power, TS exchange power | Calculated outputs forwarded to EC and DSO twins. |
-| `dtcAggreg.decision` | `deliveredPower`, `deliveredServiceDirection`, `decisionMode` | Observable result fields for dashboards. |
-| `dtcAggreg.decision` | `decisionVersion` | Internal `DOUBLE` trigger for every completed decision. |
+| Twin/component          | Attribute                                                     | Current status                                                               |
+| ----------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `dtcTSO.serviceRequest` | `requestedPower`, `serviceDirection`                          | Active decision inputs.                                                      |
+| `dtcTSO.serviceRequest` | `serviceType`                                                 | Stored/forwarded; unused by decision.                                        |
+| `dtcDSO.ts1`            | `voltageStatus`, `exchangeLimit`                              | Active decision inputs.                                                      |
+| `dtcDSO.ts2`            | `exchangeLimit`                                               | Active decision input.                                                       |
+| `dtcDSO.ts2`            | `voltageStatus`                                               | Stored/forwarded; no policy branch currently uses it.                        |
+| `dtcDSO.ts1/ts2`        | `exchangePower`                                               | Decision output destination; incoming value is unused for allocation.        |
+| `dtcEC1/2.battery`      | `stateOfCharge`                                               | Stored/forwarded; unused by decision and not emulated.                       |
+| `dtcEC1/2.battery`      | `batteryPower`                                                | Direct decision output destination; previous value is unused for allocation. |
+| `dtcEC1/2.pv`           | `pvPower`                                                     | Active only in `DOWNWARD` service.                                           |
+| `dtcEC1/2.dsr`          | `dsrPower`                                                    | Direct decision output destination; previous value is unused for allocation. |
+| `dtcAggreg.decision`    | EC battery/DSR power, TS exchange power                       | Calculated outputs forwarded to EC and DSO twins.                            |
+| `dtcAggreg.decision`    | `deliveredPower`, `deliveredServiceDirection`, `decisionMode` | Observable result fields for dashboards.                                     |
+| `dtcAggreg.decision`    | `decisionVersion`                                             | Internal `DOUBLE` trigger for every completed decision.                      |
 
 The generated decision uses these output tokens:
 
-| Output attribute | Possible current values |
-| ---------------- | ----------------------- |
-| `decisionMode` | `MONITORING`, `LOCAL_DSO_SUPPORT`, `UPWARD_SERVICE`, `DOWNWARD_SERVICE` |
-| `deliveredServiceDirection` | `NONE`, `UPWARD`, `DOWNWARD` |
-| `deliveredPower` | Non-negative delivered service magnitude in MW; local DSO support currently reports `0` because it is not a TSO service delivery. |
-| `decisionVersion` | Unix time in milliseconds represented as `DOUBLE`; this is an internal trigger, not a business measurement. |
+| Output attribute            | Possible current values                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `decisionMode`              | `MONITORING`, `LOCAL_DSO_SUPPORT`, `UPWARD_SERVICE`, `DOWNWARD_SERVICE`                                                           |
+| `deliveredServiceDirection` | `NONE`, `UPWARD`, `DOWNWARD`                                                                                                      |
+| `deliveredPower`            | Non-negative delivered service magnitude in MW; local DSO support currently reports `0` because it is not a TSO service delivery. |
+| `decisionVersion`           | Unix time in milliseconds represented as `DOUBLE`; this is an internal trigger, not a business measurement.                       |
 
 ## Valid scenario inputs
 
-| Scenario | TSO request | DSO state | EC PV telemetry | Expected result |
-| -------- | ----------- | --------- | --------------- | --------------- |
-| Baseline | `requestedPower=0`, `serviceDirection=NONE`, `serviceType=NONE` | TS1/TS2 `voltageStatus=NORMAL`, positive or omitted limits | EC1/EC2 `pvPower=0` | All calculated power values `0`, mode `MONITORING`. |
-| TS1 high voltage | `requestedPower=0`, `serviceDirection=NONE` | TS1 `voltageStatus=HIGH_VOLTAGE`; TS2 `NORMAL` | Any | EC1 battery/DSR `+4/+2`, TS1 exchange `+6`, mode `LOCAL_DSO_SUPPORT`. |
-| Upward service | `requestedPower=12`, `serviceDirection=UPWARD`, optional `serviceType=BALANCING` | TS1/TS2 `NORMAL`, limits `10` or omitted | Any | EC1 `-5/-3`, EC2 `-3/-1`, TS exchange `-8/-4`. |
-| Downward service | `requestedPower=10`, `serviceDirection=DOWNWARD`, optional `serviceType=BALANCING` | TS1/TS2 `NORMAL`, limits `10` or omitted | EC1 `3`, then EC2 `2` | EC1 battery `+8`, EC2 battery `+7`, TS exchange `+5/+5`. |
+| Scenario         | TSO request                                                                        | DSO state                                                  | EC PV telemetry       | Expected result                                                       |
+| ---------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------- | --------------------------------------------------------------------- |
+| Baseline         | `requestedPower=0`, `serviceDirection=NONE`, `serviceType=NONE`                    | TS1/TS2 `voltageStatus=NORMAL`, positive or omitted limits | EC1/EC2 `pvPower=0`   | All calculated power values `0`, mode `MONITORING`.                   |
+| TS1 high voltage | `requestedPower=0`, `serviceDirection=NONE`                                        | TS1 `voltageStatus=HIGH_VOLTAGE`; TS2 `NORMAL`             | Any                   | EC1 battery/DSR `+4/+2`, TS1 exchange `+6`, mode `LOCAL_DSO_SUPPORT`. |
+| Upward service   | `requestedPower=12`, `serviceDirection=UPWARD`, optional `serviceType=BALANCING`   | TS1/TS2 `NORMAL`, limits `10` or omitted                   | Any                   | EC1 `-5/-3`, EC2 `-3/-1`, TS exchange `-8/-4`.                        |
+| Downward service | `requestedPower=10`, `serviceDirection=DOWNWARD`, optional `serviceType=BALANCING` | TS1/TS2 `NORMAL`, limits `10` or omitted                   | EC1 `3`, then EC2 `2` | EC1 battery `+8`, EC2 battery `+7`, TS exchange `+5/+5`.              |
 
 When switching from TS1 high voltage to a TSO service scenario, set TS1 back
 to `NORMAL`; otherwise a zero or invalid TSO request can fall through to the
