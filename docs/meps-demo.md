@@ -162,12 +162,12 @@ telemetry writes.
 
 ## Expected scenario results
 
-| Time  | Primary update                            | EC1 battery / DSR | EC2 battery / DSR | TS1 / TS2 exchange | Mode                |
-| ----- | ----------------------------------------- | ----------------- | ----------------- | ------------------ | ------------------- |
-| 00:00 | baseline state                            | 0 / 0             | 0 / 0             | 0 / 0              | `MONITORING`        |
-| 02:00 | TS1 `HIGH_VOLTAGE`                        | +4 / +2           | 0 / 0             | +6 / 0             | `LOCAL_DSO_SUPPORT` |
-| 06:00 | 12 MW `UPWARD`                            | -5 / -3           | -3 / -1           | -8 / -4            | `UPWARD_SERVICE`    |
-| 12:00 | EC1 PV 3, EC2 PV 2, then 10 MW `DOWNWARD` | +8 / 0            | +7 / 0            | +5 / +5            | `DOWNWARD_SERVICE`  |
+| Time  | Primary update                                                                                                                                 | EC1 battery / DSR | EC2 battery / DSR | TS1 / TS2 exchange | Mode                |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----------------- | ------------------ | ------------------- |
+| 00:00 | baseline state, to trigger set dtcTSO => serviceRequest => requestedPower to 0                                                                 | 0 / 0             | 0 / 0             | 0 / 0              | `MONITORING`        |
+| 02:00 | set dtcDSO => ts1 => voltageStatus `HIGH_VOLTAGE`                                                                                              | +4 / +2           | 0 / 0             | +6 / 0             | `LOCAL_DSO_SUPPORT` |
+| 06:00 | set dtcDSO => ts1 => voltageStatus `NORMAL`; dtcTSO => serviceRequest - requestedPower to 12 and serviceDirection to `UPWARD`                  | -5 / -3           | -3 / -1           | -8 / -4            | `UPWARD_SERVICE`    |
+| 12:00 | dtcEC1 => pv => pvPower to 3; dtcEC2 => pv => pvPower to 2; dtcTSO => serviceRequest - requestedPower to 10 and serviceDirection to `DOWNWARD` | +8 / 0            | +7 / 0            | +5 / +5            | `DOWNWARD_SERVICE`  |
 
 ## Local generation and deployment order
 
